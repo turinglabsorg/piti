@@ -1,0 +1,62 @@
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: packages/gateway/Dockerfile
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://piti:${DB_PASSWORD:-piti_secret}@postgres:5432/piti
+      REDIS_URL: redis://redis:6379
+    networks:
+      - piti
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      POSTGRES_DB: piti
+      POSTGRES_USER: piti
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-piti_secret}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U piti"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - piti
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - piti
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  piti:
+    driver: bridge

@@ -1,0 +1,19 @@
+{
+  "name": "piti",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:gateway": "pnpm --filter @piti/gateway dev",
+    "dev:agent": "pnpm --filter @piti/agent dev",
+    "build": "pnpm --filter @piti/shared build && pnpm --filter @piti/gateway build && pnpm --filter @piti/agent build",
+    "build:agent-image": "docker build -t piti-agent -f packages/agent/Dockerfile .",
+    "db:generate": "pnpm --filter @piti/gateway db:generate",
+    "db:migrate": "pnpm --filter @piti/gateway db:migrate",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

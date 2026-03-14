@@ -1,0 +1,28 @@
+{
+  "name": "@piti/gateway",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "@piti/shared": "workspace:*",
+    "telegraf": "^4.16.0",
+    "dockerode": "^4.0.0",
+    "drizzle-orm": "^0.39.0",
+    "postgres": "^3.4.0",
+    "ioredis": "^5.4.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^3.3.0",
+    "drizzle-kit": "^0.30.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

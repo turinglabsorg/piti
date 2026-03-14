@@ -1,0 +1,207 @@
+import type { Context } from "telegraf";
+import { eq } from "drizzle-orm";
+import type { Database } from "../../db/client.js";
+import { users, messages, memories } from "../../db/schema.js";
+import { LLM_PROVIDERS, LLM_MODELS } from "@piti/shared";
+
+export function registerCommandHandlers(
+  bot: any,
+  db: Database
+) {
+  bot.command("start", async (ctx: Context) => {
+    await ctx.reply(
+      "🏋️ Welcome to PITI - Your Personal AI Trainer!\n\n" +
+        "I'm here to help you with:\n" +
+        "• Workout plans & exercise guidance\n" +
+        "• Nutrition & meal planning\n" +
+        "• Health tracking & progress\n" +
+        "• General fitness advice\n\n" +
+        "Commands:\n" +
+        "/profile - View/update your profile\n" +
+        "/provider - Change LLM provider\n" +
+        "/language - Set your preferred language\n" +
+        "/memories - View what I remember about you\n" +
+        "/reset - Reset conversation history\n" +
+        "/help - Show this message\n\n" +
+        "Just send me a message to get started!"
+    );
+  });
+
+  bot.command("help", async (ctx: Context) => {
+    await ctx.reply(
+      "📋 PITI Commands:\n\n" +
+        "/profile - View your fitness profile\n" +
+        "/provider - Switch LLM provider (claude/kimi/openrouter)\n" +
+        "/language - Set your preferred language\n" +
+        "/memories - View stored memories\n" +
+        "/reset - Clear conversation history\n" +
+        "/help - Show this message"
+    );
+  });
+
+  bot.command("provider", async (ctx: Context) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const text = (ctx.message as any)?.text || "";
+    const args = text.split(" ").slice(1);
+
+    if (args.length === 0) {
+      const providerList = LLM_PROVIDERS.map((p) => {
+        const models = LLM_MODELS[p].join(", ");
+        return `• ${p}: ${models}`;
+      }).join("\n");
+
+      await ctx.reply(
+        `Available providers:\n${providerList}\n\n` +
+          `Usage: /provider <name> [model]\n` +
+          `Example: /provider claude claude-sonnet-4-20250514`
+      );
+      return;
+    }
+
+    const provider = args[0] as string;
+    if (!LLM_PROVIDERS.includes(provider as any)) {
+      await ctx.reply(`Unknown provider. Available: ${LLM_PROVIDERS.join(", ")}`);
+      return;
+    }
+
+    const model = args[1] || LLM_MODELS[provider as keyof typeof LLM_MODELS][0];
+
+    await db
+      .update(users)
+      .set({ llmProvider: provider, llmModel: model })
+      .where(eq(users.telegramId, telegramId));
+
+    await ctx.reply(`✅ Provider set to ${provider} (model: ${model})`);
+  });
+
+  const SUPPORTED_LANGUAGES = [
+    "english", "italian", "french", "spanish", "german",
+    "portuguese", "chinese", "japanese", "korean", "russian", "arabic",
+  ];
+
+  bot.command("language", async (ctx: Context) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const text = (ctx.message as any)?.text || "";
+    const args = text.split(" ").slice(1);
+
+    if (args.length === 0) {
+      const user = await db
+        .select()
+        .from(users)
+        .where(eq(users.telegramId, telegramId))
+        .limit(1);
+
+      const currentLang = user.length > 0 ? user[0].language : "english";
+
+      await ctx.reply(
+        `🌍 Current language: **${currentLang}**\n\n` +
+          `Available: ${SUPPORTED_LANGUAGES.join(", ")}\n\n` +
+          `Usage: /language <name>\n` +
+          `Example: /language italian`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    const language = args[0].toLowerCase();
+    if (!SUPPORTED_LANGUAGES.includes(language)) {
+      await ctx.reply(
+        `Unknown language. Available: ${SUPPORTED_LANGUAGES.join(", ")}\n\n` +
+          `You can also type any language name and I'll try to use it.`
+      );
+      return;
+    }
+
+    await db
+      .update(users)
+      .set({ language })
+      .where(eq(users.telegramId, telegramId));
+
+    await ctx.reply(`✅ Language set to **${language}**. I'll reply in ${language} from now on!`, {
+      parse_mode: "Markdown",
+    });
+  });
+
+  bot.command("memories", async (ctx: Context) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const user = await db
+      .select()
+      .from(users)
+      .where(eq(users.telegramId, telegramId))
+      .limit(1);
+
+    if (user.length === 0) {
+      await ctx.reply("No profile found. Send me a message to get started!");
+      return;
+    }
+
+    const userMemories = await db
+      .select()
+      .from(memories)
+      .where(eq(memories.userId, user[0].id))
+      .limit(20);
+
+    if (userMemories.length === 0) {
+      await ctx.reply("No memories stored yet. Chat with me and I'll start remembering things about you!");
+      return;
+    }
+
+    const memoryList = userMemories
+      .map((m) => `[${m.category}] ${m.content}`)
+      .join("\n");
+
+    await ctx.reply(`🧠 What I remember about you:\n\n${memoryList}`);
+  });
+
+  bot.command("profile", async (ctx: Context) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const user = await db
+      .select()
+      .from(users)
+      .where(eq(users.telegramId, telegramId))
+      .limit(1);
+
+    if (user.length === 0 || !user[0].profile || Object.keys(user[0].profile).length === 0) {
+      await ctx.reply(
+        "No profile set up yet. Tell me about yourself:\n" +
+          "• Your age, height, weight\n" +
+          "• Fitness goals\n" +
+          "• Any injuries or restrictions\n" +
+          "• Experience level\n\n" +
+          "I'll remember everything!"
+      );
+      return;
+    }
+
+    const profile = user[0].profile as Record<string, unknown>;
+    const lines = Object.entries(profile)
+      .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`)
+      .join("\n");
+
+    await ctx.reply(`📊 Your Profile:\n\n${lines}`);
+  });
+
+  bot.command("reset", async (ctx: Context) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const user = await db
+      .select()
+      .from(users)
+      .where(eq(users.telegramId, telegramId))
+      .limit(1);
+
+    if (user.length === 0) return;
+
+    await db.delete(messages).where(eq(messages.userId, user[0].id));
+    await ctx.reply("🗑️ Conversation history cleared. Your memories are preserved.");
+  });
+}
