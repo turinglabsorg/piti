@@ -74,11 +74,16 @@ async function extractMemories(
   userMessage: string,
   assistantReply: string
 ): Promise<ExtractedMemory[]> {
-  const model = getModel(provider, modelName);
+  // Kimi puts structured output in reasoning_content instead of content,
+  // so we use a direct fetch call to read both fields from the raw response.
+  const providerConfig = getProviderConfig(provider);
 
-  const result = await generateText({
-    model,
-    system: `You are a memory extraction system. Given a conversation exchange between a user and their personal trainer AI, extract any personal facts worth remembering long-term.
+  const body = {
+    model: modelName,
+    messages: [
+      {
+        role: "user",
+        content: `You are a memory extraction system. Given the following conversation exchange between a user and their personal trainer AI, extract any personal facts about the user worth remembering long-term.
 
 Return a JSON array of objects with "content" (the fact) and "category" (one of: preference, goal, injury, progress, routine, nutrition, health, personal).
 
@@ -87,20 +92,54 @@ Only extract concrete, specific facts. Do NOT extract:
 - Things the AI said (only extract user facts)
 - Temporary states ("I'm tired today")
 
-If there's nothing worth remembering, return an empty array: []
+If there's nothing worth remembering, return: []
 
-RESPOND ONLY WITH THE JSON ARRAY, no other text.`,
-    messages: [
-      {
-        role: "user",
-        content: `User said: "${userMessage}"\n\nAssistant replied: "${assistantReply}"`,
+---
+User said: "${userMessage}"
+
+Assistant replied: "${assistantReply.slice(0, 500)}"
+---
+
+Respond ONLY with the JSON array, no markdown, no explanation.`,
       },
     ],
-    maxTokens: 512,
+    max_tokens: 512,
+  };
+
+  const response = await fetch(`${providerConfig.baseURL}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${providerConfig.apiKey}`,
+      ...providerConfig.headers,
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
   });
 
+  if (!response.ok) {
+    logger.warn("Memory extraction API call failed", { status: response.status });
+    return [];
+  }
+
+  const data = (await response.json()) as any;
+  const choice = data.choices?.[0]?.message;
+
+  // Try content first, then reasoning_content (Kimi puts JSON there)
+  let text = (choice?.content || "").trim();
+  if (!text && choice?.reasoning_content) {
+    text = extractJsonFromReasoning(choice.reasoning_content);
+  }
+
+  if (!text || text === "[]") return [];
+
+  // Strip markdown code blocks if present
+  if (text.startsWith("```")) {
+    text = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+  }
+
   try {
-    const parsed = JSON.parse(result.text.trim());
+    const parsed = JSON.parse(text);
     if (Array.isArray(parsed)) {
       return parsed.filter(
         (m: any) => m.content && typeof m.content === "string" && m.category
@@ -108,9 +147,56 @@ RESPOND ONLY WITH THE JSON ARRAY, no other text.`,
     }
   } catch {
     logger.warn("Failed to parse memory extraction response", {
-      response: result.text,
+      response: text.slice(0, 200),
     });
   }
 
   return [];
+}
+
+/**
+ * Extract a JSON array from Kimi's reasoning_content field.
+ * The reasoning often contains analysis followed by the JSON result.
+ */
+function extractJsonFromReasoning(reasoning: string): string {
+  // Look for a JSON array pattern in the reasoning
+  const match = reasoning.match(/\[[\s\S]*?\{[\s\S]*?"content"[\s\S]*?"category"[\s\S]*?\}[\s\S]*?\]/);
+  if (match) return match[0];
+
+  // Try to find an empty array
+  if (reasoning.includes("[]")) return "[]";
+
+  return "";
+}
+
+/**
+ * Get raw API config for direct fetch calls (bypasses AI SDK).
+ */
+function getProviderConfig(provider: string): {
+  baseURL: string;
+  apiKey: string;
+  headers: Record<string, string>;
+} {
+  switch (provider) {
+    case "claude":
+      return {
+        baseURL: "https://api.anthropic.com/v1",
+        apiKey: process.env.ANTHROPIC_API_KEY || "",
+        headers: {},
+      };
+    case "kimi":
+      return {
+        baseURL: "https://api.kimi.com/coding/v1",
+        apiKey: process.env.KIMI_API_KEY || "",
+        headers: { "User-Agent": "claude-code/0.1.0" },
+      };
+    case "openrouter":
+      return {
+        baseURL: "https://openrouter.ai/api/v1",
+        apiKey: process.env.OPENROUTER_API_KEY || "",
+        headers: {},
+      };
+    default:
+      throw new Error(`Unknown provider: ${provider}`);
+  }
 }

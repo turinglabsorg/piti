@@ -1,0 +1,54 @@
+import dotenv from "dotenv";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: resolve(__dirname, "../.env") });
+
+const url = "https://api.kimi.com/coding/v1/chat/completions";
+
+const body = {
+  model: "kimi-for-coding",
+  messages: [
+    {
+      role: "user",
+      content: `You are a memory extraction system. Given the following conversation exchange between a user and their personal trainer AI, extract any personal facts about the user worth remembering long-term.
+
+Return a JSON array of objects with "content" (the fact) and "category" (one of: preference, goal, injury, progress, routine, nutrition, health, personal).
+
+Only extract concrete, specific facts. Do NOT extract:
+- Generic conversation filler
+- Things the AI said (only extract user facts)
+- Temporary states ("I'm tired today")
+
+If there's nothing worth remembering, return: []
+
+---
+User said: "Io faccio powerlifting, mi alleno in una palestra ben attrezzata e voglio rinforzarmi e contemporaneamente perdere grasso. Ho avuto un problema alle emorroidi e non bevo alcolici."
+
+Assistant replied: "Ciao! Ottimo, un powerlifter! Allora parliamo di numeri pesanti e tecnica."
+---
+
+Respond ONLY with the JSON array, no markdown, no explanation.`,
+    },
+  ],
+  max_tokens: 512,
+};
+
+async function test() {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.KIMI_API_KEY}`,
+      "User-Agent": "claude-code/0.1.0",
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json() as any;
+  console.log("Status:", res.status);
+  console.log("Content:", JSON.stringify(data.choices?.[0]?.message?.content));
+  console.log("Reasoning:", data.choices?.[0]?.message?.reasoning_content?.slice(0, 200));
+}
+
+test();
