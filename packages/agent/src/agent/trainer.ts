@@ -3,6 +3,7 @@ import { getModel } from "../llm/provider.js";
 import { buildSystemPrompt } from "./systemPrompt.js";
 import { isObviouslyOffTopic, REFUSAL_MESSAGE } from "./guard.js";
 import type { AgentRequest, AgentResponse, ExtractedMemory, MediaAttachment } from "@piti/shared";
+import { getMaxTokens } from "@piti/shared";
 import { createLogger } from "@piti/shared";
 
 const logger = createLogger("trainer");
@@ -69,7 +70,7 @@ export async function handleChat(request: AgentRequest): Promise<AgentResponse> 
       model,
       system: systemPrompt,
       messages,
-      maxTokens: 16384,
+      maxTokens: getMaxTokens(selectedModel),
     });
 
     const reply = result.text;
