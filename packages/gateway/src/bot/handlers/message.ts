@@ -1,5 +1,6 @@
 import type { Context } from "telegraf";
 import type { Dispatcher } from "../../orchestrator/dispatcher.js";
+import type { MediaAttachment } from "@piti/shared";
 import { createLogger } from "@piti/shared";
 
 const logger = createLogger("message-handler");
@@ -35,58 +36,191 @@ export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
     }
   });
 
+  // Handle text messages
   bot.on("text", async (ctx: Context) => {
     const text = (ctx.message as any)?.text;
     const telegramId = ctx.from?.id;
 
     if (!text || !telegramId) return;
-
-    // Ignore commands (handled separately)
     if (text.startsWith("/")) return;
 
+    await handleUserMessage(ctx, dispatcher, telegramId, text);
+  });
+
+  // Handle photos
+  bot.on("photo", async (ctx: Context) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const msg = ctx.message as any;
+    const caption = msg.caption || "Analyze this image.";
+    // Telegram sends multiple sizes — take the largest
+    const photos = msg.photo;
+    const largest = photos[photos.length - 1];
+
     try {
-      // Show typing indicator
       await ctx.sendChatAction("typing");
 
-      const result = await dispatcher.dispatch(
-        telegramId,
-        text,
-        ctx.from?.username,
-        ctx.from?.first_name
-      );
+      const fileLink = await ctx.telegram.getFileLink(largest.file_id);
+      const imageData = await downloadAsBase64(fileLink.href);
 
-      // Send the agent reply
-      await sendReply(ctx, result.reply);
+      const media: MediaAttachment = {
+        type: "image",
+        data: [imageData],
+        mimeType: "image/jpeg",
+        caption,
+      };
 
-      // If new user and language detected (different from default), ask to confirm
-      if (
-        result.isNewUser &&
-        result.detectedLanguage &&
-        result.detectedLanguage !== "english"
-      ) {
-        pendingLanguageConfirm.set(telegramId, result.detectedLanguage);
-        await ctx.reply(
-          `🌍 I detected you're writing in **${result.detectedLanguage}**. Want me to always reply in ${result.detectedLanguage}?`,
-          {
-            parse_mode: "Markdown",
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  { text: `✅ Yes, use ${result.detectedLanguage}`, callback_data: "lang_yes" },
-                  { text: "❌ No, keep English", callback_data: "lang_no" },
-                ],
-              ],
-            },
-          } as any
-        );
-      }
+      await handleUserMessage(ctx, dispatcher, telegramId, caption, media);
     } catch (err) {
-      logger.error("Error processing message", { telegramId, error: err });
-      await ctx.reply(
-        "Sorry, I encountered an error processing your message. Please try again."
-      );
+      logger.error("Error processing photo", { telegramId, error: err });
+      await ctx.reply("Sorry, I couldn't process that image. Please try again.");
     }
   });
+
+  // Handle videos and video notes (round videos)
+  bot.on(["video", "video_note"], async (ctx: Context) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const msg = ctx.message as any;
+    const video = msg.video || msg.video_note;
+    const caption = msg.caption || "Analyze this video.";
+
+    // Check video size — Telegram allows up to 20MB download
+    if (video.file_size && video.file_size > 20 * 1024 * 1024) {
+      await ctx.reply("Video is too large. Please send a shorter clip (max 20MB).");
+      return;
+    }
+
+    try {
+      await ctx.sendChatAction("typing");
+      await ctx.reply("🎥 Processing video... extracting frames for analysis.");
+
+      const fileLink = await ctx.telegram.getFileLink(video.file_id);
+      const frames = await extractVideoFrames(fileLink.href);
+
+      if (frames.length === 0) {
+        await ctx.reply("Couldn't extract frames from this video. Try sending a shorter, clearer clip.");
+        return;
+      }
+
+      const media: MediaAttachment = {
+        type: "video_frames",
+        data: frames,
+        mimeType: "image/jpeg",
+        caption,
+      };
+
+      logger.info("Video frames extracted", { telegramId, frameCount: frames.length });
+      await handleUserMessage(ctx, dispatcher, telegramId, caption, media);
+    } catch (err) {
+      logger.error("Error processing video", { telegramId, error: err });
+      await ctx.reply("Sorry, I couldn't process that video. Please try again with a shorter clip.");
+    }
+  });
+}
+
+async function handleUserMessage(
+  ctx: Context,
+  dispatcher: Dispatcher,
+  telegramId: number,
+  text: string,
+  media?: MediaAttachment
+) {
+  try {
+    await ctx.sendChatAction("typing");
+
+    const result = await dispatcher.dispatch(
+      telegramId,
+      text,
+      ctx.from?.username,
+      ctx.from?.first_name,
+      media
+    );
+
+    await sendReply(ctx, result.reply);
+
+    // If new user and language detected, ask to confirm
+    if (
+      result.isNewUser &&
+      result.detectedLanguage &&
+      result.detectedLanguage !== "english"
+    ) {
+      pendingLanguageConfirm.set(telegramId, result.detectedLanguage);
+      await ctx.reply(
+        `🌍 I detected you're writing in **${result.detectedLanguage}**. Want me to always reply in ${result.detectedLanguage}?`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: `✅ Yes, use ${result.detectedLanguage}`, callback_data: "lang_yes" },
+                { text: "❌ No, keep English", callback_data: "lang_no" },
+              ],
+            ],
+          },
+        } as any
+      );
+    }
+  } catch (err) {
+    logger.error("Error processing message", { telegramId, error: err });
+    await ctx.reply("Sorry, I encountered an error processing your message. Please try again.");
+  }
+}
+
+async function downloadAsBase64(url: string): Promise<string> {
+  const response = await fetch(url);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  return buffer.toString("base64");
+}
+
+async function extractVideoFrames(videoUrl: string, maxFrames = 6): Promise<string[]> {
+  const { execSync } = await import("child_process");
+  const { mkdtempSync, readdirSync, readFileSync, rmSync } = await import("fs");
+  const { join } = await import("path");
+  const { tmpdir } = await import("os");
+
+  const tmpDir = mkdtempSync(join(tmpdir(), "piti-video-"));
+
+  try {
+    // Download video
+    const videoPath = join(tmpDir, "input.mp4");
+    const videoResponse = await fetch(videoUrl);
+    const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
+    const { writeFileSync } = await import("fs");
+    writeFileSync(videoPath, videoBuffer);
+
+    // Get video duration
+    let duration = 10;
+    try {
+      const probeOutput = execSync(
+        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`,
+        { encoding: "utf-8", timeout: 10_000 }
+      ).trim();
+      duration = parseFloat(probeOutput) || 10;
+    } catch {
+      // Use default duration
+    }
+
+    // Extract frames at even intervals
+    const interval = Math.max(duration / (maxFrames + 1), 0.5);
+    const framePattern = join(tmpDir, "frame_%03d.jpg");
+
+    execSync(
+      `ffmpeg -i "${videoPath}" -vf "fps=1/${interval},scale=640:-1" -frames:v ${maxFrames} -q:v 3 "${framePattern}" -y`,
+      { timeout: 30_000, stdio: "pipe" }
+    );
+
+    // Read frames as base64
+    const files = readdirSync(tmpDir)
+      .filter((f) => f.startsWith("frame_") && f.endsWith(".jpg"))
+      .sort();
+
+    return files.map((f) => readFileSync(join(tmpDir, f)).toString("base64"));
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
 }
 
 async function sendReply(ctx: Context, reply: string) {

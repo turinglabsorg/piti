@@ -2,7 +2,7 @@ import { generateText } from "ai";
 import { getModel } from "../llm/provider.js";
 import { buildSystemPrompt } from "./systemPrompt.js";
 import { isObviouslyOffTopic, REFUSAL_MESSAGE } from "./guard.js";
-import type { AgentRequest, AgentResponse, ExtractedMemory } from "@piti/shared";
+import type { AgentRequest, AgentResponse, ExtractedMemory, MediaAttachment } from "@piti/shared";
 import { createLogger } from "@piti/shared";
 
 const logger = createLogger("trainer");
@@ -30,14 +30,15 @@ export async function handleChat(request: AgentRequest): Promise<AgentResponse> 
     return { reply: REFUSAL_MESSAGE, newMemories: [] };
   }
 
-  // Pick the right model based on complexity
-  const selectedModel = classification === "complex"
+  // Media always uses smart model; otherwise pick based on complexity
+  const hasMedia = !!request.media;
+  const selectedModel = hasMedia || classification === "complex"
     ? request.smartModel
     : request.routerModel;
 
   logger.info("Model selected", {
     userId: request.userId,
-    complexity: classification,
+    complexity: hasMedia ? "media" : classification,
     model: selectedModel,
   });
 
@@ -45,14 +46,23 @@ export async function handleChat(request: AgentRequest): Promise<AgentResponse> 
   const systemPrompt = buildSystemPrompt(request.userProfile, request.memories, request.language);
 
   // Build message history
-  const messages: Array<{ role: "user" | "assistant" | "system"; content: string }> = [];
+  const messages: Array<{ role: "user" | "assistant"; content: any }> = [];
   for (const msg of request.conversationHistory) {
     messages.push({
       role: msg.role as "user" | "assistant",
       content: msg.content,
     });
   }
-  messages.push({ role: "user", content: request.message });
+
+  // Build current message — with media if present
+  if (hasMedia) {
+    messages.push({
+      role: "user",
+      content: buildMediaMessage(request.message, request.media!),
+    });
+  } else {
+    messages.push({ role: "user", content: request.message });
+  }
 
   try {
     const result = await generateText({
@@ -80,6 +90,34 @@ export async function handleChat(request: AgentRequest): Promise<AgentResponse> 
     logger.error("LLM call failed", { error: err, provider: request.llmProvider, model: selectedModel });
     throw err;
   }
+}
+
+/**
+ * Build a multimodal message with text + images for the AI SDK.
+ * Uses the Vercel AI SDK content parts format.
+ */
+function buildMediaMessage(text: string, media: MediaAttachment): any[] {
+  const parts: any[] = [];
+
+  // Add text context based on media type
+  if (media.type === "video_frames") {
+    parts.push({
+      type: "text",
+      text: `${text}\n\n[The following ${media.data.length} images are frames extracted from a video at regular intervals. Analyze the movement, form, and technique shown across these frames as a continuous sequence.]`,
+    });
+  } else {
+    parts.push({ type: "text", text });
+  }
+
+  // Add images
+  for (const base64Data of media.data) {
+    parts.push({
+      type: "image",
+      image: `data:${media.mimeType};base64,${base64Data}`,
+    });
+  }
+
+  return parts;
 }
 
 /**

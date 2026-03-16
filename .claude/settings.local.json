@@ -55,7 +55,8 @@
       "Bash(kill:*)",
       "Bash(pkill:*)",
       "WebFetch(domain:openrouter.ai)",
-      "WebFetch(domain:artificialanalysis.ai)"
+      "WebFetch(domain:artificialanalysis.ai)",
+      "Bash(pnpm:*)"
     ]
   }
 }

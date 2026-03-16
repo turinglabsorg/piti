@@ -1,6 +1,15 @@
 import type { ChatMessage, Memory } from "./message.js";
 import type { UserProfile } from "./user.js";
 
+export interface MediaAttachment {
+  type: "image" | "video_frames";
+  /** Base64-encoded image data (JPEG) */
+  data: string[];
+  mimeType: string;
+  /** Original caption or description */
+  caption?: string;
+}
+
 export interface AgentRequest {
   userId: number;
   telegramId: number;
@@ -13,6 +22,7 @@ export interface AgentRequest {
   routerModel: string;
   smartModel: string;
   language: string;
+  media?: MediaAttachment;
 }
 
 export interface AgentResponse {

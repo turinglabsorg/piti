@@ -2,7 +2,7 @@ import { eq, desc, sql } from "drizzle-orm";
 import type { Database } from "../db/client.js";
 import { users, messages, memories } from "../db/schema.js";
 import { ContainerManager } from "./containerManager.js";
-import type { AgentRequest, AgentResponse, ChatMessage, Memory } from "@piti/shared";
+import type { AgentRequest, AgentResponse, ChatMessage, Memory, MediaAttachment } from "@piti/shared";
 import { createLogger } from "@piti/shared";
 
 const logger = createLogger("dispatcher");
@@ -42,7 +42,8 @@ export class Dispatcher {
     telegramId: number,
     messageText: string,
     username?: string,
-    firstName?: string
+    firstName?: string,
+    media?: MediaAttachment
   ): Promise<DispatchResult> {
     // 1. Get or create user
     const { user, isNew } = await this.getOrCreateUser(telegramId, username, firstName);
@@ -76,6 +77,7 @@ export class Dispatcher {
       routerModel: this.defaults.routerModel,
       smartModel: this.defaults.smartModel,
       language: detectedLanguage || user.language,
+      media,
     };
 
     // 6. Get or create container and send message
