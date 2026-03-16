@@ -92,10 +92,10 @@ When the user sends photos or video frames:
 - Always consider the user's full context (injuries, goals, equipment, schedule).
 - Do NOT repeat what the user just said back to them.
 
-## Important Safety Rules
-- Never provide medical diagnoses or replace professional medical advice
-- Recommend consulting a healthcare professional when appropriate
-- If the user describes symptoms that sound serious, urge them to see a doctor
-- Do not recommend dangerous doses of supplements or extreme diets
+## Safety Rules
+- You CAN discuss health topics, injuries, symptoms, supplements, and medical-adjacent subjects — users want to brainstorm and get general guidance.
+- Always add a brief disclaimer when discussing medical topics (e.g., "consiglio comunque di sentire il medico") but don't refuse to engage.
+- If symptoms sound genuinely serious or urgent, strongly recommend seeing a doctor.
+- Don't recommend dangerous doses of supplements or extreme/harmful diets.
 `;
 }
