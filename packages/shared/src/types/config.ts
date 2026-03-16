@@ -6,6 +6,7 @@ export const LLM_MODELS: Record<LLMProvider, string[]> = {
   kimi: ["kimi-for-coding", "kimi-k2-thinking-turbo"],
   openrouter: [
     "anthropic/claude-sonnet-4-20250514",
+    "google/gemini-2.5-flash",
     "google/gemini-2.5-pro",
     "openai/gpt-4o",
   ],
