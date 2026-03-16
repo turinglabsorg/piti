@@ -129,15 +129,24 @@ async function handleUserMessage(
   media?: MediaAttachment
 ) {
   try {
+    // Keep typing indicator alive every 4s until response is ready
+    const typingInterval = setInterval(() => {
+      ctx.sendChatAction("typing").catch(() => {});
+    }, 4000);
     await ctx.sendChatAction("typing");
 
-    const result = await dispatcher.dispatch(
-      telegramId,
-      text,
-      ctx.from?.username,
-      ctx.from?.first_name,
-      media
-    );
+    let result;
+    try {
+      result = await dispatcher.dispatch(
+        telegramId,
+        text,
+        ctx.from?.username,
+        ctx.from?.first_name,
+        media
+      );
+    } finally {
+      clearInterval(typingInterval);
+    }
 
     await sendReply(ctx, result.reply);
 
