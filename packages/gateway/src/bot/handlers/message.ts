@@ -224,18 +224,86 @@ async function extractVideoFrames(videoUrl: string, maxFrames = 6): Promise<stri
 }
 
 async function sendReply(ctx: Context, reply: string) {
-  if (reply.length > 4096) {
-    const chunks = splitMessage(reply, 4096);
-    for (const chunk of chunks) {
-      await ctx.reply(chunk, { parse_mode: "Markdown" }).catch(() =>
-        ctx.reply(chunk)
-      );
-    }
-  } else {
-    await ctx.reply(reply, { parse_mode: "Markdown" }).catch(() =>
-      ctx.reply(reply)
+  const html = markdownToTelegramHtml(reply);
+  const chunks = html.length > 4096 ? splitMessage(html, 4096) : [html];
+
+  for (const chunk of chunks) {
+    await ctx.reply(chunk, { parse_mode: "HTML" }).catch(() =>
+      ctx.reply(chunk)
     );
   }
+}
+
+/**
+ * Convert LLM markdown output to Telegram-compatible HTML.
+ * Telegram supports: <b>, <i>, <u>, <s>, <code>, <pre>, <a>, <blockquote>
+ */
+function markdownToTelegramHtml(md: string): string {
+  // Step 1: Extract code blocks to protect them from processing
+  const codeBlocks: string[] = [];
+  let html = md.replace(/```(?:\w+)?\n([\s\S]*?)```/g, (_, code) => {
+    codeBlocks.push(code);
+    return `%%CODEBLOCK_${codeBlocks.length - 1}%%`;
+  });
+
+  const inlineCodes: string[] = [];
+  html = html.replace(/`([^`]+)`/g, (_, code) => {
+    inlineCodes.push(code);
+    return `%%INLINE_${inlineCodes.length - 1}%%`;
+  });
+
+  // Step 2: Escape HTML special chars in the text
+  html = html.replace(/&/g, "&amp;");
+  html = html.replace(/</g, "&lt;");
+  html = html.replace(/>/g, "&gt;");
+
+  // Step 3: Convert markdown to HTML tags
+
+  // Headers → bold text
+  html = html.replace(/^#{1,6}\s+(.+)$/gm, "\n<b>$1</b>\n");
+
+  // Bold+italic ***text***
+  html = html.replace(/\*{3}(.+?)\*{3}/g, "<b><i>$1</i></b>");
+
+  // Bold **text**
+  html = html.replace(/\*{2}(.+?)\*{2}/g, "<b>$1</b>");
+
+  // Italic *text* (not inside words)
+  html = html.replace(/(?<!\w)\*([^\s*](?:.*?[^\s*])?)\*(?!\w)/g, "<i>$1</i>");
+
+  // Strikethrough ~~text~~
+  html = html.replace(/~~(.+?)~~/g, "<s>$1</s>");
+
+  // Links [text](url)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+  // Blockquotes &gt; text (already escaped)
+  html = html.replace(/^&gt;\s+(.+)$/gm, "<blockquote>$1</blockquote>");
+
+  // Bullet points: * or - at start of line → •
+  html = html.replace(/^[\*\-]\s+/gm, "• ");
+
+  // Step 4: Restore code blocks with HTML tags
+  html = html.replace(/%%CODEBLOCK_(\d+)%%/g, (_, i) => {
+    const code = codeBlocks[parseInt(i)]
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    return `<pre>${code}</pre>`;
+  });
+
+  html = html.replace(/%%INLINE_(\d+)%%/g, (_, i) => {
+    const code = inlineCodes[parseInt(i)]
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    return `<code>${code}</code>`;
+  });
+
+  // Clean up multiple blank lines
+  html = html.replace(/\n{3,}/g, "\n\n");
+
+  return html.trim();
 }
 
 function splitMessage(text: string, maxLength: number): string[] {
