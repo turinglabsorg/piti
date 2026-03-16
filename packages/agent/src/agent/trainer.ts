@@ -69,7 +69,7 @@ export async function handleChat(request: AgentRequest): Promise<AgentResponse> 
       model,
       system: systemPrompt,
       messages,
-      maxTokens: 2048,
+      maxTokens: hasMedia ? 4096 : 2048,
     });
 
     const reply = result.text;
