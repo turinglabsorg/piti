@@ -74,7 +74,8 @@ async function main() {
   process.on("SIGTERM", shutdown);
 
   // Launch bot — drop pending updates to avoid 409 conflict with previous instance
-  await bot.launch({ dropPendingUpdates: true });
+  // bot.launch() starts long-polling and never resolves, so don't await it
+  bot.launch({ dropPendingUpdates: true });
   logger.info("PITI Gateway started");
 }
 
