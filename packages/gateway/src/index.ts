@@ -73,25 +73,9 @@ async function main() {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  // Launch bot with retry on 409 conflict (previous instance still holding the poll)
-  const MAX_RETRIES = 12;
-  const RETRY_DELAY_MS = 10_000;
-
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      await bot.launch();
-      logger.info("PITI Gateway started");
-      break;
-    } catch (err: any) {
-      const isConflict = err?.response?.error_code === 409;
-      if (isConflict && attempt < MAX_RETRIES) {
-        logger.warn(`Telegram conflict (attempt ${attempt}/${MAX_RETRIES}), retrying in ${RETRY_DELAY_MS / 1000}s...`);
-        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
-      } else {
-        throw err;
-      }
-    }
-  }
+  // Launch bot — drop pending updates to avoid 409 conflict with previous instance
+  await bot.launch({ dropPendingUpdates: true });
+  logger.info("PITI Gateway started");
 }
 
 main().catch((err) => {
