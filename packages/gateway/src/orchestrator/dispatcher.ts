@@ -19,6 +19,8 @@ export interface DispatchResult {
 export interface DispatcherDefaults {
   llmProvider: string;
   llmModel: string;
+  routerModel: string;
+  smartModel: string;
   language: string;
 }
 
@@ -30,6 +32,8 @@ export class Dispatcher {
     private defaults: DispatcherDefaults = {
       llmProvider: "claude",
       llmModel: "claude-sonnet-4-20250514",
+      routerModel: "google/gemini-2.5-flash",
+      smartModel: "google/gemini-2.5-pro",
       language: "english",
     }
   ) {}
@@ -69,6 +73,8 @@ export class Dispatcher {
       userProfile: (user.profile as Record<string, unknown>) || {},
       llmProvider: user.llmProvider,
       llmModel: user.llmModel,
+      routerModel: this.defaults.routerModel,
+      smartModel: this.defaults.smartModel,
       language: detectedLanguage || user.language,
     };
 

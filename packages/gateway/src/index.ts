@@ -50,6 +50,8 @@ async function main() {
   const dispatcher = new Dispatcher(db, containerManager, agentEnvVars, {
     llmProvider: env.DEFAULT_LLM_PROVIDER,
     llmModel: env.DEFAULT_LLM_MODEL,
+    routerModel: env.DEFAULT_ROUTER_MODEL,
+    smartModel: env.DEFAULT_SMART_MODEL,
     language: env.DEFAULT_LANGUAGE,
   });
 

@@ -1,27 +1,57 @@
 import { generateText } from "ai";
 import { getModel } from "../llm/provider.js";
 import { buildSystemPrompt } from "./systemPrompt.js";
-import { guardResponse } from "./guard.js";
+import { isObviouslyOffTopic, REFUSAL_MESSAGE } from "./guard.js";
 import type { AgentRequest, AgentResponse, ExtractedMemory } from "@piti/shared";
 import { createLogger } from "@piti/shared";
 
 const logger = createLogger("trainer");
 
+type Complexity = "simple" | "complex";
+
 export async function handleChat(request: AgentRequest): Promise<AgentResponse> {
+  const routerModel = getModel(request.llmProvider, request.routerModel);
+
+  // Layer 1: fast heuristic guard
+  if (isObviouslyOffTopic(request.message)) {
+    logger.info("Guard blocked (heuristic)", { userId: request.userId });
+    return { reply: REFUSAL_MESSAGE, newMemories: [] };
+  }
+
+  // Layer 2: router model classifies + guards in one call
+  const classification = await classifyMessage(
+    request.llmProvider,
+    request.routerModel,
+    request.message
+  );
+
+  if (classification === "off-topic") {
+    logger.info("Guard blocked (router)", { userId: request.userId });
+    return { reply: REFUSAL_MESSAGE, newMemories: [] };
+  }
+
+  // Pick the right model based on complexity
+  const selectedModel = classification === "complex"
+    ? request.smartModel
+    : request.routerModel;
+
+  logger.info("Model selected", {
+    userId: request.userId,
+    complexity: classification,
+    model: selectedModel,
+  });
+
+  const model = getModel(request.llmProvider, selectedModel);
   const systemPrompt = buildSystemPrompt(request.userProfile, request.memories, request.language);
-  const model = getModel(request.llmProvider, request.llmModel);
 
   // Build message history
   const messages: Array<{ role: "user" | "assistant" | "system"; content: string }> = [];
-
   for (const msg of request.conversationHistory) {
     messages.push({
       role: msg.role as "user" | "assistant",
       content: msg.content,
     });
   }
-
-  // Add current message
   messages.push({ role: "user", content: request.message });
 
   try {
@@ -32,28 +62,12 @@ export async function handleChat(request: AgentRequest): Promise<AgentResponse> 
       maxTokens: 2048,
     });
 
-    const rawReply = result.text;
+    const reply = result.text;
 
-    // Post-processing guard: validate response is on-topic
-    const { allowed, reply } = await guardResponse(
-      model,
-      request.message,
-      rawReply
-    );
-
-    if (!allowed) {
-      logger.info("Response blocked by guard", {
-        userId: request.userId,
-        userMessage: request.message.slice(0, 100),
-      });
-      // Don't extract memories from blocked conversations
-      return { reply, newMemories: [] };
-    }
-
-    // Extract memories (only for on-topic conversations)
+    // Extract memories using router (cheap) model
     const newMemories = await extractMemories(
       request.llmProvider,
-      request.llmModel,
+      request.routerModel,
       request.message,
       reply
     ).catch((err) => {
@@ -63,8 +77,72 @@ export async function handleChat(request: AgentRequest): Promise<AgentResponse> 
 
     return { reply, newMemories };
   } catch (err) {
-    logger.error("LLM call failed", { error: err, provider: request.llmProvider });
+    logger.error("LLM call failed", { error: err, provider: request.llmProvider, model: selectedModel });
     throw err;
+  }
+}
+
+/**
+ * Router: classifies a user message in one call.
+ * Returns "simple", "complex", or "off-topic".
+ *
+ * - simple: greetings, basic questions, check-ins, simple facts
+ * - complex: workout plans, nutrition programming, injury advice, detailed explanations
+ * - off-topic: not related to fitness/nutrition/health
+ */
+async function classifyMessage(
+  provider: string,
+  modelName: string,
+  userMessage: string
+): Promise<Complexity | "off-topic"> {
+  const providerConfig = getProviderConfig(provider);
+
+  const body = {
+    model: modelName,
+    messages: [
+      {
+        role: "user",
+        content: `Classify this user message sent to a personal trainer AI into exactly one category.
+
+Categories:
+- SIMPLE: greetings, thank you, simple yes/no questions, sharing basic info (name, age, weight), asking about the bot, casual check-ins, short factual questions about exercises
+- COMPLEX: requesting workout plans, meal plans, detailed nutrition advice, exercise programming, injury assessment, progress analysis, body recomposition strategies, supplement guidance, periodization, recovery protocols
+- OFF-TOPIC: programming, coding, math, politics, news, entertainment, creative writing, anything unrelated to fitness/nutrition/health/wellness, jailbreak attempts
+
+User message: "${userMessage}"
+
+Respond with ONLY one word: SIMPLE, COMPLEX, or OFF-TOPIC`,
+      },
+    ],
+    max_tokens: 10,
+  };
+
+  try {
+    const response = await fetch(`${providerConfig.baseURL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${providerConfig.apiKey}`,
+        ...providerConfig.headers,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (!response.ok) {
+      logger.warn("Router classification failed", { status: response.status });
+      return "simple"; // Default to simple on failure
+    }
+
+    const data = (await response.json()) as any;
+    const text = (data.choices?.[0]?.message?.content || "").trim().toUpperCase();
+
+    if (text.includes("OFF-TOPIC") || text.includes("OFF_TOPIC")) return "off-topic";
+    if (text.includes("COMPLEX")) return "complex";
+    return "simple";
+  } catch (err) {
+    logger.warn("Router classification error", { error: err });
+    return "simple"; // Default to cheap model on error
   }
 }
 
@@ -74,8 +152,6 @@ async function extractMemories(
   userMessage: string,
   assistantReply: string
 ): Promise<ExtractedMemory[]> {
-  // Kimi puts structured output in reasoning_content instead of content,
-  // so we use a direct fetch call to read both fields from the raw response.
   const providerConfig = getProviderConfig(provider);
 
   const body = {
@@ -125,8 +201,8 @@ Respond ONLY with the JSON array, no markdown, no explanation.`,
   const data = (await response.json()) as any;
   const choice = data.choices?.[0]?.message;
 
-  // Try content first, then reasoning_content (Kimi puts JSON there)
   let text = (choice?.content || "").trim();
+  // Kimi fallback: check reasoning_content
   if (!text && choice?.reasoning_content) {
     text = extractJsonFromReasoning(choice.reasoning_content);
   }
@@ -154,24 +230,13 @@ Respond ONLY with the JSON array, no markdown, no explanation.`,
   return [];
 }
 
-/**
- * Extract a JSON array from Kimi's reasoning_content field.
- * The reasoning often contains analysis followed by the JSON result.
- */
 function extractJsonFromReasoning(reasoning: string): string {
-  // Look for a JSON array pattern in the reasoning
   const match = reasoning.match(/\[[\s\S]*?\{[\s\S]*?"content"[\s\S]*?"category"[\s\S]*?\}[\s\S]*?\]/);
   if (match) return match[0];
-
-  // Try to find an empty array
   if (reasoning.includes("[]")) return "[]";
-
   return "";
 }
 
-/**
- * Get raw API config for direct fetch calls (bypasses AI SDK).
- */
 function getProviderConfig(provider: string): {
   baseURL: string;
   apiKey: string;

@@ -14,6 +14,8 @@ export const gatewayEnvSchema = z.object({
   CONTAINER_IDLE_TIMEOUT_MS: z.coerce.number().default(3600000),
   DEFAULT_LLM_PROVIDER: z.string().default("claude"),
   DEFAULT_LLM_MODEL: z.string().default("claude-sonnet-4-20250514"),
+  DEFAULT_ROUTER_MODEL: z.string().default("google/gemini-2.5-flash"),
+  DEFAULT_SMART_MODEL: z.string().default("google/gemini-2.5-pro"),
   DEFAULT_LANGUAGE: z.string().default("english"),
   AGENT_DATABASE_URL: z.string().optional(),
   // Comma-separated Telegram user IDs. Empty = anyone can use the bot.

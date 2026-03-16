@@ -10,6 +10,8 @@ export interface AgentRequest {
   userProfile: UserProfile;
   llmProvider: string;
   llmModel: string;
+  routerModel: string;
+  smartModel: string;
   language: string;
 }
 
