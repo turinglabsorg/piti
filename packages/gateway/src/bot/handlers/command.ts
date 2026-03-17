@@ -255,19 +255,37 @@ export function registerCommandHandlers(
         }
 
         const keyboard = [];
-        if (!sub.cancelAtPeriodEnd) {
-          // Show manage button (leads to Stripe portal where they can cancel)
-          const portalResp = await fetch(`${opts.billingUrl}/subscription/${telegramId}/cancel`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...billingHeaders },
-            body: JSON.stringify({}),
-            signal: AbortSignal.timeout(10000),
-          }).catch(() => null);
 
-          if (portalResp?.ok) {
-            const { url } = (await portalResp.json()) as { url: string };
+        // Stripe portal for manage/cancel/reactivate
+        const portalResp = await fetch(`${opts.billingUrl}/subscription/${telegramId}/cancel`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...billingHeaders },
+          body: JSON.stringify({}),
+          signal: AbortSignal.timeout(10000),
+        }).catch(() => null);
+
+        if (portalResp?.ok) {
+          const { url } = (await portalResp.json()) as { url: string };
+          if (sub.cancelAtPeriodEnd) {
+            keyboard.push([{ text: "Reactivate Subscription", url }]);
+          } else {
             keyboard.push([{ text: "Manage Subscription", url }]);
           }
+        }
+
+        // Always show change plan options
+        const otherPlan = sub.plan === "starter" ? "pro" : "starter";
+        const otherLabel = otherPlan === "pro" ? "Upgrade to Pro ($24.99/mo)" : "Downgrade to Starter ($9.99/mo)";
+        const changeResp = await fetch(`${opts.billingUrl}/checkout`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...billingHeaders },
+          body: JSON.stringify({ telegramId, plan: otherPlan }),
+          signal: AbortSignal.timeout(10000),
+        }).catch(() => null);
+
+        if (changeResp?.ok) {
+          const { url } = (await changeResp.json()) as { url: string };
+          keyboard.push([{ text: otherLabel, url }]);
         }
 
         await ctx.reply(msg, {
