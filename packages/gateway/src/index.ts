@@ -79,6 +79,7 @@ async function main() {
   const allowedUsersStr = (config.telegram.allowed_users || []).join(",");
   const bot = createBot(config.telegram.token, db, dispatcher, {
     allowedUsers: allowedUsersStr,
+    mcpBridgeUrl: mcpBridgeUrl ? `http://localhost:${5100}` : undefined,
   });
 
   // Graceful shutdown

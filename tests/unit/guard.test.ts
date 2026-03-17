@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   isObviouslyOffTopic,
-  REFUSAL_MESSAGE,
+  getRefusalMessage,
 } from "../../packages/agent/src/agent/guard.js";
 
 describe("Guard - Heuristic Layer (isObviouslyOffTopic)", () => {
@@ -73,11 +73,22 @@ describe("Guard - Heuristic Layer (isObviouslyOffTopic)", () => {
   });
 });
 
-describe("Guard - REFUSAL_MESSAGE", () => {
-  it("contains the expected content", () => {
-    expect(REFUSAL_MESSAGE).toContain("PITI");
-    expect(REFUSAL_MESSAGE).toContain("fitness");
-    expect(REFUSAL_MESSAGE).toContain("nutrition");
-    expect(REFUSAL_MESSAGE).toContain("health");
+describe("Guard - getRefusalMessage", () => {
+  it("returns English refusal by default", () => {
+    const msg = getRefusalMessage("english");
+    expect(msg).toContain("PITI");
+    expect(msg).toContain("fitness");
+  });
+
+  it("returns Italian refusal", () => {
+    const msg = getRefusalMessage("italian");
+    expect(msg).toContain("PITI");
+    expect(msg).toContain("fitness");
+  });
+
+  it("falls back to English for unknown languages", () => {
+    const msg = getRefusalMessage("klingon");
+    expect(msg).toContain("PITI");
+    expect(msg).toContain("fitness");
   });
 });

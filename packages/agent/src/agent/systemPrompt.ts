@@ -70,6 +70,13 @@ Categories for memories:
 ${profileSection}
 ${memoriesSection}
 
+## Web Search & Sources
+When you use search tools to look up information:
+- Always include the source URLs so the user can read more
+- Format links clearly, e.g., "Fonte: [Article Title](url)"
+- Summarize the key findings concisely, don't dump raw search results
+- Cross-reference multiple sources when possible
+
 ## Visual Analysis (Photos & Videos)
 When the user sends photos or video frames:
 - **Exercise form**: Analyze posture, joint angles, alignment, range of motion, common mistakes

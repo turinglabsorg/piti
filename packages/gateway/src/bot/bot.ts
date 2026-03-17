@@ -10,6 +10,7 @@ const logger = createLogger("bot");
 
 export interface BotOptions {
   allowedUsers: string;
+  mcpBridgeUrl?: string;
 }
 
 export function createBot(token: string, db: Database, dispatcher: Dispatcher, opts: BotOptions): Telegraf<Context> {
@@ -38,7 +39,7 @@ export function createBot(token: string, db: Database, dispatcher: Dispatcher, o
   });
 
   // Register handlers
-  registerCommandHandlers(bot, db);
+  registerCommandHandlers(bot, db, { mcpBridgeUrl: opts.mcpBridgeUrl });
   registerMessageHandler(bot, dispatcher);
 
   // Error handling

@@ -1,12 +1,17 @@
 import type { Context } from "telegraf";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { Database } from "../../db/client.js";
-import { users, messages, memories } from "../../db/schema.js";
+import { users, messages, memories, tokenUsage } from "../../db/schema.js";
 import { LLM_PROVIDERS, LLM_MODELS } from "@piti/shared";
+
+export interface CommandHandlerOpts {
+  mcpBridgeUrl?: string;
+}
 
 export function registerCommandHandlers(
   bot: any,
-  db: Database
+  db: Database,
+  opts: CommandHandlerOpts = {}
 ) {
   bot.command("start", async (ctx: Context) => {
     await ctx.reply(
@@ -22,6 +27,7 @@ export function registerCommandHandlers(
         "/language - Set your preferred language\n" +
         "/memories - View what I remember about you\n" +
         "/reset - Reset conversation history\n" +
+        "/status - View agent status & MCP services\n" +
         "/help - Show this message\n\n" +
         "Just send me a message to get started!"
     );
@@ -35,6 +41,7 @@ export function registerCommandHandlers(
         "/language - Set your preferred language\n" +
         "/memories - View stored memories\n" +
         "/reset - Clear conversation history\n" +
+        "/status - View agent status & MCP services\n" +
         "/help - Show this message"
     );
   });
@@ -187,6 +194,74 @@ export function registerCommandHandlers(
       .join("\n");
 
     await ctx.reply(`📊 Your Profile:\n\n${lines}`);
+  });
+
+  bot.command("status", async (ctx: Context) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const user = await db
+      .select()
+      .from(users)
+      .where(eq(users.telegramId, telegramId))
+      .limit(1);
+
+    if (user.length === 0) {
+      await ctx.reply("No profile found. Send a message to get started!");
+      return;
+    }
+
+    // Get token usage stats
+    const usageStats = await db
+      .select({
+        model: tokenUsage.model,
+        totalIn: sql<number>`SUM(${tokenUsage.inputTokens})`,
+        totalOut: sql<number>`SUM(${tokenUsage.outputTokens})`,
+        calls: sql<number>`COUNT(*)`,
+      })
+      .from(tokenUsage)
+      .where(eq(tokenUsage.userId, user[0].id))
+      .groupBy(tokenUsage.model);
+
+    // Get MCP tools info
+    let mcpInfo = "No MCP services connected";
+    if (opts.mcpBridgeUrl) {
+      try {
+        const resp = await fetch(`${opts.mcpBridgeUrl}/tools`, {
+          signal: AbortSignal.timeout(3000),
+        });
+        if (resp.ok) {
+          const data = (await resp.json()) as { tools: { name: string; description: string }[] };
+          if (data.tools.length > 0) {
+            mcpInfo = data.tools.map((t) => `• ${t.name}`).join("\n");
+          } else {
+            mcpInfo = "Bridge running, no tools loaded";
+          }
+        }
+      } catch {
+        mcpInfo = "Bridge unreachable";
+      }
+    }
+
+    // Build status message
+    let statusMsg = `<b>PITI Status</b>\n\n`;
+    statusMsg += `<b>User:</b> ${user[0].username || user[0].firstName || "Unknown"}\n`;
+    statusMsg += `<b>Language:</b> ${user[0].language}\n`;
+    statusMsg += `<b>Provider:</b> ${user[0].llmProvider}\n`;
+    statusMsg += `<b>Model:</b> ${user[0].llmModel}\n\n`;
+
+    statusMsg += `<b>Token Usage:</b>\n`;
+    if (usageStats.length === 0) {
+      statusMsg += `No usage yet\n`;
+    } else {
+      for (const s of usageStats) {
+        statusMsg += `• ${s.model}: ${s.calls} calls, ${s.totalIn} in / ${s.totalOut} out\n`;
+      }
+    }
+
+    statusMsg += `\n<b>MCP Services:</b>\n${mcpInfo}`;
+
+    await ctx.reply(statusMsg, { parse_mode: "HTML" });
   });
 
   bot.command("reset", async (ctx: Context) => {

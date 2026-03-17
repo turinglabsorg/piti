@@ -2,8 +2,18 @@ import { createLogger } from "@piti/shared";
 
 const logger = createLogger("guard");
 
-export const REFUSAL_MESSAGE =
-  "I'm PITI, your personal trainer assistant. I can only help with fitness, nutrition, and health topics. Please ask me something related to your training, diet, or wellness!";
+const REFUSAL_MESSAGES: Record<string, string> = {
+  italian: "Sono PITI, il tuo assistente personal trainer. Posso aiutarti solo con fitness, nutrizione e salute. Chiedimi qualcosa sul tuo allenamento, dieta o benessere!",
+  english: "I'm PITI, your personal trainer assistant. I can only help with fitness, nutrition, and health topics. Please ask me something related to your training, diet, or wellness!",
+  spanish: "Soy PITI, tu asistente de entrenamiento personal. Solo puedo ayudarte con fitness, nutrición y salud. ¡Pregúntame algo sobre tu entrenamiento, dieta o bienestar!",
+  french: "Je suis PITI, ton assistant coach personnel. Je ne peux t'aider qu'en matière de fitness, nutrition et santé. Pose-moi une question sur ton entraînement, ton alimentation ou ton bien-être !",
+  german: "Ich bin PITI, dein persönlicher Trainer-Assistent. Ich kann dir nur bei Fitness, Ernährung und Gesundheit helfen. Frag mich etwas zu deinem Training, deiner Ernährung oder deinem Wohlbefinden!",
+  portuguese: "Sou o PITI, seu assistente de personal trainer. Só posso ajudar com fitness, nutrição e saúde. Me pergunte algo sobre seu treino, dieta ou bem-estar!",
+};
+
+export function getRefusalMessage(language: string): string {
+  return REFUSAL_MESSAGES[language.toLowerCase()] || REFUSAL_MESSAGES.english;
+}
 
 /**
  * Fast heuristic for obviously off-topic requests.
