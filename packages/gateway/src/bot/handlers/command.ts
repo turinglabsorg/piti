@@ -216,30 +216,61 @@ export function registerCommandHandlers(
       const billingHeaders: Record<string, string> = {};
       if (opts.billingApiSecret) billingHeaders["x-api-secret"] = opts.billingApiSecret;
 
-      const resp = await fetch(`${opts.billingUrl}/balance/${telegramId}`, {
+      // Check subscription status
+      const subResp = await fetch(`${opts.billingUrl}/subscription/${telegramId}`, {
         signal: AbortSignal.timeout(5000),
         headers: billingHeaders,
       });
 
-      if (!resp.ok) {
+      if (!subResp.ok) {
         await ctx.reply("Could not load subscription info. Try again later.");
         return;
       }
 
-      const data = (await resp.json()) as { telegramId: string; credits: number; plan: string };
+      const sub = (await subResp.json()) as {
+        active: boolean;
+        status?: string;
+        plan: string;
+        credits: number;
+        currentPeriodStart?: string;
+        currentPeriodEnd?: string;
+        cancelAtPeriodEnd?: boolean;
+      };
 
-      if (data.plan === "starter" || data.plan === "pro") {
-        const planName = data.plan === "starter" ? "Starter ($9.99/month)" : "Pro ($24.99/month)";
-        await ctx.reply(
-          `<b>Active Plan: ${planName}</b>\n` +
-            `Credits remaining: <b>${data.credits}</b>\n\n` +
-            `Manage your subscription in Stripe's customer portal.`,
-          { parse_mode: "HTML" }
-        );
+      if (sub.active) {
+        const planName = sub.plan === "starter" ? "Starter ($9.99/month)" : "Pro ($24.99/month)";
+        const start = sub.currentPeriodStart ? new Date(sub.currentPeriodStart).toLocaleDateString() : "—";
+        const end = sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : "—";
+
+        let msg = `<b>Active Plan: ${planName}</b>\n\n`;
+        msg += `Credits: <b>${sub.credits}</b>\n`;
+        msg += `Period: ${start} — ${end}\n`;
+
+        if (sub.cancelAtPeriodEnd) {
+          msg += `\nSubscription will cancel at end of period.`;
+        }
+
+        // Add manage/cancel button
+        const keyboard = [];
+        const cancelResp = await fetch(`${opts.billingUrl}/subscription/${telegramId}/cancel`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...billingHeaders },
+          signal: AbortSignal.timeout(5000),
+        }).catch(() => null);
+
+        if (cancelResp?.ok) {
+          const { url } = (await cancelResp.json()) as { url: string };
+          keyboard.push([{ text: "Manage Subscription", url }]);
+        }
+
+        await ctx.reply(msg, {
+          parse_mode: "HTML",
+          reply_markup: keyboard.length > 0 ? { inline_keyboard: keyboard } : undefined,
+        } as any);
         return;
       }
 
-      // Free plan — show buy options
+      // No active subscription — show buy options
       const keyboard = [];
 
       const starterResp = await fetch(`${opts.billingUrl}/checkout`, {
@@ -266,7 +297,7 @@ export function registerCommandHandlers(
       }
 
       await ctx.reply(
-        `<b>Free Plan</b>\nCredits remaining: <b>${data.credits}</b>\n\nUpgrade to get more credits:`,
+        `<b>Free Plan</b>\nCredits: <b>${sub.credits}</b>\n\nUpgrade to get more credits:`,
         {
           parse_mode: "HTML",
           reply_markup: keyboard.length > 0 ? { inline_keyboard: keyboard } : undefined,
