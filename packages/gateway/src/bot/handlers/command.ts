@@ -2,15 +2,29 @@ import type { Context } from "telegraf";
 import { eq, sql } from "drizzle-orm";
 import type { Database } from "../../db/client.js";
 import { users, messages, memories, tokenUsage, mcpCalls } from "../../db/schema.js";
-import { LLM_PROVIDERS, LLM_MODELS } from "@piti/shared";
 
 const creditsTranslations: Record<string, Record<string, string>> = {
   english: { title: "Your Credits", plan: "Plan", remaining: "Credits remaining", costs: "Credit costs", simple: "Simple question", detailed: "Detailed plan", vision: "Photo/video analysis", search: "Web search", credit: "credit", credits: "credits" },
   italian: { title: "I tuoi Crediti", plan: "Piano", remaining: "Crediti rimanenti", costs: "Costi crediti", simple: "Domanda semplice", detailed: "Piano dettagliato", vision: "Analisi foto/video", search: "Ricerca web", credit: "credito", credits: "crediti" },
-  spanish: { title: "Tus Creditos", plan: "Plan", remaining: "Creditos restantes", costs: "Costos de creditos", simple: "Pregunta simple", detailed: "Plan detallado", vision: "Analisis foto/video", search: "Busqueda web", credit: "credito", credits: "creditos" },
-  french: { title: "Vos Credits", plan: "Forfait", remaining: "Credits restants", costs: "Couts des credits", simple: "Question simple", detailed: "Plan detaille", vision: "Analyse photo/video", search: "Recherche web", credit: "credit", credits: "credits" },
+  spanish: { title: "Tus Créditos", plan: "Plan", remaining: "Créditos restantes", costs: "Costos de créditos", simple: "Pregunta simple", detailed: "Plan detallado", vision: "Análisis foto/video", search: "Búsqueda web", credit: "crédito", credits: "créditos" },
+  french: { title: "Vos Crédits", plan: "Forfait", remaining: "Crédits restants", costs: "Coûts des crédits", simple: "Question simple", detailed: "Plan détaillé", vision: "Analyse photo/vidéo", search: "Recherche web", credit: "crédit", credits: "crédits" },
   german: { title: "Deine Credits", plan: "Plan", remaining: "Verbleibende Credits", costs: "Credit-Kosten", simple: "Einfache Frage", detailed: "Detaillierter Plan", vision: "Foto/Video-Analyse", search: "Websuche", credit: "Credit", credits: "Credits" },
-  portuguese: { title: "Seus Creditos", plan: "Plano", remaining: "Creditos restantes", costs: "Custos de creditos", simple: "Pergunta simples", detailed: "Plano detalhado", vision: "Analise foto/video", search: "Pesquisa web", credit: "credito", credits: "creditos" },
+  portuguese: { title: "Seus Créditos", plan: "Plano", remaining: "Créditos restantes", costs: "Custos de créditos", simple: "Pergunta simples", detailed: "Plano detalhado", vision: "Análise foto/vídeo", search: "Pesquisa web", credit: "crédito", credits: "créditos" },
+};
+
+const LANGUAGE_KEYBOARD = {
+  reply_markup: {
+    inline_keyboard: [
+      [
+        { text: "\u{1F1EC}\u{1F1E7}", callback_data: "setlang_english" },
+        { text: "\u{1F1EE}\u{1F1F9}", callback_data: "setlang_italian" },
+        { text: "\u{1F1EA}\u{1F1F8}", callback_data: "setlang_spanish" },
+        { text: "\u{1F1EB}\u{1F1F7}", callback_data: "setlang_french" },
+        { text: "\u{1F1E9}\u{1F1EA}", callback_data: "setlang_german" },
+        { text: "\u{1F1E7}\u{1F1F7}", callback_data: "setlang_portuguese" },
+      ],
+    ],
+  },
 };
 
 export interface CommandHandlerOpts {
@@ -19,190 +33,136 @@ export interface CommandHandlerOpts {
   billingApiSecret?: string;
 }
 
+async function getUserLang(db: Database, telegramId: number): Promise<string> {
+  const row = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
+  return row.length > 0 ? row[0].language : "english";
+}
+
 export function registerCommandHandlers(
   bot: any,
   db: Database,
   opts: CommandHandlerOpts = {}
 ) {
+  // /start — welcome + language picker
   bot.command("start", async (ctx: Context) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
     await ctx.reply(
-      "🏋️ Welcome to PITI - Your Personal AI Trainer!\n\n" +
-        "I'm here to help you with:\n" +
-        "• Workout plans & exercise guidance\n" +
-        "• Nutrition & meal planning\n" +
-        "• Health tracking & progress\n" +
-        "• General fitness advice\n\n" +
-        "Commands:\n" +
-        "/profile - View/update your profile\n" +
-        "/provider - Change LLM provider\n" +
-        "/language - Set your preferred language\n" +
-        "/memories - View what I remember about you\n" +
-        "/reset - Reset conversation history\n" +
-        "/status - View agent status & MCP services\n" +
-        "/credits - Check your credit balance\n" +
-        "/help - Show this message\n\n" +
-        "Just send me a message to get started!"
+      "Welcome to PITI! Your AI fitness & nutrition buddy.\n\n" +
+        "First, choose your language:",
+      LANGUAGE_KEYBOARD as any
     );
   });
 
+  // /help — list commands
   bot.command("help", async (ctx: Context) => {
     await ctx.reply(
-      "📋 PITI Commands:\n\n" +
+      "PITI Commands:\n\n" +
+        "/language - Change language\n" +
+        "/credits - Check credit balance\n" +
+        "/memories - View what PITI remembers\n" +
         "/profile - View your fitness profile\n" +
-        "/provider - Switch LLM provider (claude/kimi/openrouter)\n" +
-        "/language - Set your preferred language\n" +
-        "/memories - View stored memories\n" +
         "/reset - Clear conversation history\n" +
-        "/status - View agent status & MCP services\n" +
         "/help - Show this message"
     );
   });
 
-  bot.command("provider", async (ctx: Context) => {
-    const telegramId = ctx.from?.id;
-    if (!telegramId) return;
-
-    const text = (ctx.message as any)?.text || "";
-    const args = text.split(" ").slice(1);
-
-    if (args.length === 0) {
-      const providerList = LLM_PROVIDERS.map((p) => {
-        const models = LLM_MODELS[p].join(", ");
-        return `• ${p}: ${models}`;
-      }).join("\n");
-
-      await ctx.reply(
-        `Available providers:\n${providerList}\n\n` +
-          `Usage: /provider <name> [model]\n` +
-          `Example: /provider claude claude-sonnet-4-20250514`
-      );
-      return;
-    }
-
-    const provider = args[0] as string;
-    if (!LLM_PROVIDERS.includes(provider as any)) {
-      await ctx.reply(`Unknown provider. Available: ${LLM_PROVIDERS.join(", ")}`);
-      return;
-    }
-
-    const model = args[1] || LLM_MODELS[provider as keyof typeof LLM_MODELS][0];
-
-    await db
-      .update(users)
-      .set({ llmProvider: provider, llmModel: model })
-      .where(eq(users.telegramId, telegramId));
-
-    await ctx.reply(`✅ Provider set to ${provider} (model: ${model})`);
-  });
-
-  const SUPPORTED_LANGUAGES = [
-    "english", "italian", "french", "spanish", "german",
-    "portuguese", "chinese", "japanese", "korean", "russian", "arabic",
-  ];
-
+  // /language — flag picker
   bot.command("language", async (ctx: Context) => {
-    await ctx.reply(
-      "Choose your language / Scegli la tua lingua:",
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: "\u{1F1EC}\u{1F1E7} English", callback_data: "setlang_english" },
-              { text: "\u{1F1EE}\u{1F1F9} Italiano", callback_data: "setlang_italian" },
-            ],
-            [
-              { text: "\u{1F1EA}\u{1F1F8} Espanol", callback_data: "setlang_spanish" },
-              { text: "\u{1F1EB}\u{1F1F7} Francais", callback_data: "setlang_french" },
-            ],
-            [
-              { text: "\u{1F1E9}\u{1F1EA} Deutsch", callback_data: "setlang_german" },
-              { text: "\u{1F1E7}\u{1F1F7} Portugues", callback_data: "setlang_portuguese" },
-            ],
-          ],
-        },
-      } as any
-    );
+    await ctx.reply("Choose your language:", LANGUAGE_KEYBOARD as any);
   });
 
+  // /memories
   bot.command("memories", async (ctx: Context) => {
     const telegramId = ctx.from?.id;
     if (!telegramId) return;
 
-    const user = await db
-      .select()
-      .from(users)
-      .where(eq(users.telegramId, telegramId))
-      .limit(1);
-
+    const user = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
     if (user.length === 0) {
-      await ctx.reply("No profile found. Send me a message to get started!");
+      await ctx.reply("Send me a message to get started!");
       return;
     }
 
-    const userMemories = await db
-      .select()
-      .from(memories)
-      .where(eq(memories.userId, user[0].id))
-      .limit(20);
+    const userMemories = await db.select().from(memories).where(eq(memories.userId, user[0].id)).limit(20);
 
     if (userMemories.length === 0) {
-      await ctx.reply("No memories stored yet. Chat with me and I'll start remembering things about you!");
+      await ctx.reply("No memories yet. Chat with me and I'll start remembering!");
       return;
     }
 
-    const memoryList = userMemories
-      .map((m) => `[${m.category}] ${m.content}`)
-      .join("\n");
-
-    await ctx.reply(`🧠 What I remember about you:\n\n${memoryList}`);
+    const memoryList = userMemories.map((m) => `- [${m.category}] ${m.content}`).join("\n");
+    await ctx.reply(`What I remember about you:\n\n${memoryList}`);
   });
 
+  // /profile — show memories grouped as a profile summary
   bot.command("profile", async (ctx: Context) => {
     const telegramId = ctx.from?.id;
     if (!telegramId) return;
 
-    const user = await db
-      .select()
-      .from(users)
-      .where(eq(users.telegramId, telegramId))
-      .limit(1);
+    const user = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
+    if (user.length === 0) {
+      await ctx.reply("Send me a message to get started!");
+      return;
+    }
 
-    if (user.length === 0 || !user[0].profile || Object.keys(user[0].profile).length === 0) {
+    const userMemories = await db.select().from(memories).where(eq(memories.userId, user[0].id)).limit(30);
+
+    if (userMemories.length === 0) {
       await ctx.reply(
-        "No profile set up yet. Tell me about yourself:\n" +
-          "• Your age, height, weight\n" +
-          "• Fitness goals\n" +
-          "• Any injuries or restrictions\n" +
-          "• Experience level\n\n" +
-          "I'll remember everything!"
+        "No profile yet. Tell me about yourself:\n" +
+          "- Age, height, weight\n" +
+          "- Fitness goals\n" +
+          "- Injuries or restrictions\n" +
+          "- Experience level"
       );
       return;
     }
 
-    const profile = user[0].profile as Record<string, unknown>;
-    const lines = Object.entries(profile)
-      .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`)
-      .join("\n");
+    // Group memories by category
+    const groups: Record<string, string[]> = {};
+    for (const m of userMemories) {
+      if (!groups[m.category]) groups[m.category] = [];
+      groups[m.category].push(m.content);
+    }
 
-    await ctx.reply(`📊 Your Profile:\n\n${lines}`);
+    const categoryLabels: Record<string, string> = {
+      personal: "Personal",
+      goal: "Goals",
+      routine: "Routine",
+      progress: "Progress",
+      injury: "Injuries",
+      nutrition: "Nutrition",
+      health: "Health",
+      preference: "Preferences",
+    };
+
+    let msg = `<b>Your Profile</b>\n`;
+    msg += `Language: ${user[0].language}\n\n`;
+
+    for (const [cat, items] of Object.entries(groups)) {
+      const label = categoryLabels[cat] || cat;
+      msg += `<b>${label}:</b>\n`;
+      for (const item of items) {
+        msg += `- ${item}\n`;
+      }
+      msg += `\n`;
+    }
+
+    await ctx.reply(msg.trim(), { parse_mode: "HTML" });
   });
 
+  // /status
   bot.command("status", async (ctx: Context) => {
     const telegramId = ctx.from?.id;
     if (!telegramId) return;
 
-    const user = await db
-      .select()
-      .from(users)
-      .where(eq(users.telegramId, telegramId))
-      .limit(1);
-
+    const user = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
     if (user.length === 0) {
-      await ctx.reply("No profile found. Send a message to get started!");
+      await ctx.reply("Send a message to get started!");
       return;
     }
 
-    // Get token usage stats
     const usageStats = await db
       .select({
         model: tokenUsage.model,
@@ -214,47 +174,24 @@ export function registerCommandHandlers(
       .where(eq(tokenUsage.userId, user[0].id))
       .groupBy(tokenUsage.model);
 
-    // Get MCP tools info
     let mcpInfo = "No MCP services connected";
     if (opts.mcpBridgeUrl) {
       try {
-        const resp = await fetch(`${opts.mcpBridgeUrl}/tools`, {
-          signal: AbortSignal.timeout(3000),
-        });
+        const resp = await fetch(`${opts.mcpBridgeUrl}/tools`, { signal: AbortSignal.timeout(3000) });
         if (resp.ok) {
-          const data = (await resp.json()) as { tools: { name: string; description: string }[] };
-          if (data.tools.length > 0) {
-            mcpInfo = data.tools.map((t) => `• ${t.name}`).join("\n");
-          } else {
-            mcpInfo = "Bridge running, no tools loaded";
-          }
+          const data = (await resp.json()) as { tools: { name: string }[] };
+          mcpInfo = data.tools.length > 0
+            ? data.tools.map((t) => `- ${t.name}`).join("\n")
+            : "Bridge running, no tools loaded";
         }
       } catch {
         mcpInfo = "Bridge unreachable";
       }
     }
 
-    // Build status message
-    let statusMsg = `<b>PITI Status</b>\n\n`;
-    statusMsg += `<b>User:</b> ${user[0].username || user[0].firstName || "Unknown"}\n`;
-    statusMsg += `<b>Language:</b> ${user[0].language}\n`;
-    statusMsg += `<b>Provider:</b> ${user[0].llmProvider}\n`;
-    statusMsg += `<b>Model:</b> ${user[0].llmModel}\n\n`;
-
-    statusMsg += `<b>Token Usage:</b>\n`;
-    if (usageStats.length === 0) {
-      statusMsg += `No usage yet\n`;
-    } else {
-      for (const s of usageStats) {
-        statusMsg += `• ${s.model}: ${s.calls} calls, ${s.totalIn} in / ${s.totalOut} out\n`;
-      }
-    }
-
-    // Get MCP call stats
     const mcpStats = await db
       .select({
-        tool: mcpCalls.tool,
-        server: mcpCalls.server,
+        tool: mcpCalls.tool, server: mcpCalls.server,
         calls: sql<number>`COUNT(*)`,
         avgMs: sql<number>`ROUND(AVG(${mcpCalls.durationMs}))`,
       })
@@ -262,18 +199,31 @@ export function registerCommandHandlers(
       .where(eq(mcpCalls.userId, user[0].id))
       .groupBy(mcpCalls.server, mcpCalls.tool);
 
-    statusMsg += `\n<b>MCP Services:</b>\n${mcpInfo}`;
+    let msg = `<b>PITI Status</b>\n\n`;
+    msg += `<b>Language:</b> ${user[0].language}\n\n`;
 
-    if (mcpStats.length > 0) {
-      statusMsg += `\n\n<b>MCP Usage:</b>\n`;
-      for (const s of mcpStats) {
-        statusMsg += `• ${s.server}/${s.tool}: ${s.calls} calls, avg ${s.avgMs}ms\n`;
+    msg += `<b>Token Usage:</b>\n`;
+    if (usageStats.length === 0) {
+      msg += `No usage yet\n`;
+    } else {
+      for (const s of usageStats) {
+        msg += `- ${s.model}: ${s.calls} calls\n`;
       }
     }
 
-    await ctx.reply(statusMsg, { parse_mode: "HTML" });
+    msg += `\n<b>MCP Tools:</b>\n${mcpInfo}`;
+
+    if (mcpStats.length > 0) {
+      msg += `\n\n<b>MCP Usage:</b>\n`;
+      for (const s of mcpStats) {
+        msg += `- ${s.server}/${s.tool}: ${s.calls} calls, avg ${s.avgMs}ms\n`;
+      }
+    }
+
+    await ctx.reply(msg, { parse_mode: "HTML" });
   });
 
+  // /credits
   bot.command("credits", async (ctx: Context) => {
     if (!opts.billingUrl) {
       await ctx.reply("Enjoy PITI for free! No credit limits on this instance.");
@@ -300,24 +250,17 @@ export function registerCommandHandlers(
       }
 
       const data = (await resp.json()) as { telegramId: number; credits: number; plan: string };
-
-      // Get user language
-      const userRow = await db
-        .select()
-        .from(users)
-        .where(eq(users.telegramId, telegramId))
-        .limit(1);
-      const lang = userRow.length > 0 ? userRow[0].language : "english";
+      const lang = await getUserLang(db, telegramId);
       const t = creditsTranslations[lang] || creditsTranslations.english;
 
       let msg = `<b>${t.title}</b>\n\n`;
       msg += `${t.plan}: <b>${data.plan}</b>\n`;
       msg += `${t.remaining}: <b>${data.credits}</b>\n\n`;
       msg += `<b>${t.costs}:</b>\n`;
-      msg += `• ${t.simple}: 1 ${t.credit}\n`;
-      msg += `• ${t.detailed}: 3 ${t.credits}\n`;
-      msg += `• ${t.vision}: 5 ${t.credits}\n`;
-      msg += `• ${t.search}: +1 ${t.credit}\n`;
+      msg += `- ${t.simple}: 1 ${t.credit}\n`;
+      msg += `- ${t.detailed}: 3 ${t.credits}\n`;
+      msg += `- ${t.vision}: 5 ${t.credits}\n`;
+      msg += `- ${t.search}: +1 ${t.credit}\n`;
 
       if (data.credits <= 10) {
         const starterResp = await fetch(`${opts.billingUrl}/checkout`, {
@@ -339,19 +282,58 @@ export function registerCommandHandlers(
     }
   });
 
+  // /reset — confirmation first
+  const resetTranslations: Record<string, { confirm: string; yes: string; no: string; done: string; cancelled: string }> = {
+    english: { confirm: "Are you sure you want to clear your conversation history? Your memories will be preserved.", yes: "Yes, clear", no: "Cancel", done: "Conversation history cleared.", cancelled: "Cancelled." },
+    italian: { confirm: "Sei sicuro di voler cancellare la cronologia delle conversazioni? I tuoi ricordi saranno preservati.", yes: "Sì, cancella", no: "Annulla", done: "Cronologia cancellata.", cancelled: "Annullato." },
+    spanish: { confirm: "¿Estás seguro de que quieres borrar el historial de conversaciones? Tus recuerdos se conservarán.", yes: "Sí, borrar", no: "Cancelar", done: "Historial borrado.", cancelled: "Cancelado." },
+    french: { confirm: "Êtes-vous sûr de vouloir effacer l'historique des conversations ? Vos souvenirs seront préservés.", yes: "Oui, effacer", no: "Annuler", done: "Historique effacé.", cancelled: "Annulé." },
+    german: { confirm: "Bist du sicher, dass du den Gesprächsverlauf löschen willst? Deine Erinnerungen bleiben erhalten.", yes: "Ja, löschen", no: "Abbrechen", done: "Verlauf gelöscht.", cancelled: "Abgebrochen." },
+    portuguese: { confirm: "Tem certeza que deseja limpar o histórico de conversas? Suas memórias serão preservadas.", yes: "Sim, limpar", no: "Cancelar", done: "Histórico limpo.", cancelled: "Cancelado." },
+  };
+
   bot.command("reset", async (ctx: Context) => {
     const telegramId = ctx.from?.id;
     if (!telegramId) return;
 
-    const user = await db
-      .select()
-      .from(users)
-      .where(eq(users.telegramId, telegramId))
-      .limit(1);
+    const lang = await getUserLang(db, telegramId);
+    const t = resetTranslations[lang] || resetTranslations.english;
 
+    await ctx.reply(t.confirm, {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: t.yes, callback_data: "reset_yes" },
+            { text: t.no, callback_data: "reset_no" },
+          ],
+        ],
+      },
+    } as any);
+  });
+
+  // Reset confirmation callbacks
+  bot.action("reset_yes", async (ctx: any) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const user = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
     if (user.length === 0) return;
 
     await db.delete(messages).where(eq(messages.userId, user[0].id));
-    await ctx.reply("🗑️ Conversation history cleared. Your memories are preserved.");
+
+    const lang = user[0].language;
+    const t = resetTranslations[lang] || resetTranslations.english;
+    await ctx.answerCbQuery(t.done);
+    await ctx.editMessageText(t.done);
+  });
+
+  bot.action("reset_no", async (ctx: any) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const lang = await getUserLang(db, telegramId);
+    const t = resetTranslations[lang] || resetTranslations.english;
+    await ctx.answerCbQuery(t.cancelled);
+    await ctx.editMessageText(t.cancelled);
   });
 }

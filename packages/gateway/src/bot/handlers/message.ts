@@ -143,24 +143,20 @@ async function handleUserMessage(
 
     await sendReply(ctx, result.reply);
 
-    // If new user, show language picker
+    // If new user, show compact language picker
     if (result.isNewUser) {
       await ctx.reply(
-        "Choose your language / Scegli la tua lingua:",
+        "Choose your language:",
         {
           reply_markup: {
             inline_keyboard: [
               [
-                { text: "\u{1F1EC}\u{1F1E7} English", callback_data: "setlang_english" },
-                { text: "\u{1F1EE}\u{1F1F9} Italiano", callback_data: "setlang_italian" },
-              ],
-              [
-                { text: "\u{1F1EA}\u{1F1F8} Espanol", callback_data: "setlang_spanish" },
-                { text: "\u{1F1EB}\u{1F1F7} Francais", callback_data: "setlang_french" },
-              ],
-              [
-                { text: "\u{1F1E9}\u{1F1EA} Deutsch", callback_data: "setlang_german" },
-                { text: "\u{1F1E7}\u{1F1F7} Portugues", callback_data: "setlang_portuguese" },
+                { text: "\u{1F1EC}\u{1F1E7}", callback_data: "setlang_english" },
+                { text: "\u{1F1EE}\u{1F1F9}", callback_data: "setlang_italian" },
+                { text: "\u{1F1EA}\u{1F1F8}", callback_data: "setlang_spanish" },
+                { text: "\u{1F1EB}\u{1F1F7}", callback_data: "setlang_french" },
+                { text: "\u{1F1E9}\u{1F1EA}", callback_data: "setlang_german" },
+                { text: "\u{1F1E7}\u{1F1F7}", callback_data: "setlang_portuguese" },
               ],
             ],
           },
