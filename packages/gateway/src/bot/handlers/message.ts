@@ -5,35 +5,28 @@ import { createLogger } from "@piti/shared";
 
 const logger = createLogger("message-handler");
 
-// Track pending language confirmations: telegramId -> detected language
-const pendingLanguageConfirm = new Map<number, string>();
 
 export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
-  // Handle callback queries for language confirmation
-  bot.action(/^lang_(yes|no)$/, async (ctx: any) => {
+  // Handle language selection callback
+  bot.action(/^setlang_(.+)$/, async (ctx: any) => {
     const telegramId = ctx.from?.id;
     if (!telegramId) return;
 
-    const action = ctx.match[1];
-    const detectedLang = pendingLanguageConfirm.get(telegramId);
+    const language = ctx.match[1];
+    await dispatcher.setUserLanguage(telegramId, language);
 
-    if (!detectedLang) {
-      await ctx.answerCbQuery("No pending language setting.");
-      return;
-    }
+    const langNames: Record<string, string> = {
+      english: "English \u{1F1EC}\u{1F1E7}",
+      italian: "Italiano \u{1F1EE}\u{1F1F9}",
+      spanish: "Espanol \u{1F1EA}\u{1F1F8}",
+      french: "Francais \u{1F1EB}\u{1F1F7}",
+      german: "Deutsch \u{1F1E9}\u{1F1EA}",
+      portuguese: "Portugues \u{1F1E7}\u{1F1F7}",
+    };
 
-    pendingLanguageConfirm.delete(telegramId);
-
-    if (action === "yes") {
-      await dispatcher.setUserLanguage(telegramId, detectedLang);
-      await ctx.answerCbQuery(`Language set to ${detectedLang}!`);
-      await ctx.editMessageText(`✅ Language set to **${detectedLang}**. I'll always reply in ${detectedLang} from now on.`, {
-        parse_mode: "Markdown",
-      });
-    } else {
-      await ctx.answerCbQuery("Language kept as default.");
-      await ctx.editMessageText("👍 Keeping default language (english). You can change it anytime with /language.");
-    }
+    const name = langNames[language] || language;
+    await ctx.answerCbQuery(`${name}`);
+    await ctx.editMessageText(`${name} selected!`);
   });
 
   // Handle text messages
@@ -150,22 +143,24 @@ async function handleUserMessage(
 
     await sendReply(ctx, result.reply);
 
-    // If new user and language detected, ask to confirm
-    if (
-      result.isNewUser &&
-      result.detectedLanguage &&
-      result.detectedLanguage !== "english"
-    ) {
-      pendingLanguageConfirm.set(telegramId, result.detectedLanguage);
+    // If new user, show language picker
+    if (result.isNewUser) {
       await ctx.reply(
-        `🌍 I detected you're writing in **${result.detectedLanguage}**. Want me to always reply in ${result.detectedLanguage}?`,
+        "Choose your language / Scegli la tua lingua:",
         {
-          parse_mode: "Markdown",
           reply_markup: {
             inline_keyboard: [
               [
-                { text: `✅ Yes, use ${result.detectedLanguage}`, callback_data: "lang_yes" },
-                { text: "❌ No, keep English", callback_data: "lang_no" },
+                { text: "\u{1F1EC}\u{1F1E7} English", callback_data: "setlang_english" },
+                { text: "\u{1F1EE}\u{1F1F9} Italiano", callback_data: "setlang_italian" },
+              ],
+              [
+                { text: "\u{1F1EA}\u{1F1F8} Espanol", callback_data: "setlang_spanish" },
+                { text: "\u{1F1EB}\u{1F1F7} Francais", callback_data: "setlang_french" },
+              ],
+              [
+                { text: "\u{1F1E9}\u{1F1EA} Deutsch", callback_data: "setlang_german" },
+                { text: "\u{1F1E7}\u{1F1F7} Portugues", callback_data: "setlang_portuguese" },
               ],
             ],
           },

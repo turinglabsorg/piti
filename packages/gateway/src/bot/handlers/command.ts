@@ -101,48 +101,27 @@ export function registerCommandHandlers(
   ];
 
   bot.command("language", async (ctx: Context) => {
-    const telegramId = ctx.from?.id;
-    if (!telegramId) return;
-
-    const text = (ctx.message as any)?.text || "";
-    const args = text.split(" ").slice(1);
-
-    if (args.length === 0) {
-      const user = await db
-        .select()
-        .from(users)
-        .where(eq(users.telegramId, telegramId))
-        .limit(1);
-
-      const currentLang = user.length > 0 ? user[0].language : "english";
-
-      await ctx.reply(
-        `🌍 Current language: **${currentLang}**\n\n` +
-          `Available: ${SUPPORTED_LANGUAGES.join(", ")}\n\n` +
-          `Usage: /language <name>\n` +
-          `Example: /language italian`,
-        { parse_mode: "Markdown" }
-      );
-      return;
-    }
-
-    const language = args[0].toLowerCase();
-    if (!SUPPORTED_LANGUAGES.includes(language)) {
-      await ctx.reply(
-        `Unknown language. Available: ${SUPPORTED_LANGUAGES.join(", ")}\n\n` +
-          `You can also type any language name and I'll try to use it.`
-      );
-      return;
-    }
-
-    await db
-      .update(users)
-      .set({ language })
-      .where(eq(users.telegramId, telegramId));
-
-    await ctx.reply(`✅ Language set to **${language}**. I'll reply in ${language} from now on!`, {
-      parse_mode: "Markdown",
-    });
+    await ctx.reply(
+      "Choose your language / Scegli la tua lingua:",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "\u{1F1EC}\u{1F1E7} English", callback_data: "setlang_english" },
+              { text: "\u{1F1EE}\u{1F1F9} Italiano", callback_data: "setlang_italian" },
+            ],
+            [
+              { text: "\u{1F1EA}\u{1F1F8} Espanol", callback_data: "setlang_spanish" },
+              { text: "\u{1F1EB}\u{1F1F7} Francais", callback_data: "setlang_french" },
+            ],
+            [
+              { text: "\u{1F1E9}\u{1F1EA} Deutsch", callback_data: "setlang_german" },
+              { text: "\u{1F1E7}\u{1F1F7} Portugues", callback_data: "setlang_portuguese" },
+            ],
+          ],
+        },
+      } as any
+    );
   });
 
   bot.command("memories", async (ctx: Context) => {

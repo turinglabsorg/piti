@@ -69,7 +69,8 @@
       "Bash(gcloud:*)",
       "Bash(gcloud services:*)",
       "Bash(openssl rand:*)",
-      "Bash(sleep:*)"
+      "Bash(sleep:*)",
+      "Bash(gcloud logging:*)"
     ]
   }
 }
