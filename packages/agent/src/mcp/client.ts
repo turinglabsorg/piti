@@ -1,79 +1,121 @@
-import { experimental_createMCPClient as createMCPClient } from "ai";
+import { tool } from "ai";
+import { z } from "zod";
 import { createLogger } from "@piti/shared";
 
 const logger = createLogger("mcp-client");
 
-interface McpServerEntry {
+interface BridgeTool {
   name: string;
-  url: string;
+  description: string;
+  input_schema: Record<string, any>;
 }
 
 /**
- * Parse the MCP_SERVERS env var and connect to each MCP server.
- * Returns a merged tools object for use with generateText().
- * Failures are logged but non-fatal — returns empty tools if all fail.
+ * Connect to the MCP Bridge HTTP service and create AI SDK tool definitions.
+ * The bridge URL is passed via MCP_BRIDGE_URL env var.
  */
-export async function connectMcpTools(): Promise<{
-  tools: Record<string, any>;
-  cleanup: () => Promise<void>;
-}> {
-  const mcpServersRaw = process.env.MCP_SERVERS;
-  if (!mcpServersRaw) {
-    return { tools: {}, cleanup: async () => {} };
+export async function connectMcpTools(): Promise<Record<string, any>> {
+  const bridgeUrl = process.env.MCP_BRIDGE_URL;
+  if (!bridgeUrl) {
+    return {};
   }
 
-  let entries: McpServerEntry[];
   try {
-    entries = JSON.parse(mcpServersRaw);
-  } catch (err) {
-    logger.warn("Failed to parse MCP_SERVERS env var", { error: err });
-    return { tools: {}, cleanup: async () => {} };
-  }
+    // Fetch available tools from the bridge
+    const resp = await fetch(`${bridgeUrl}/tools`, {
+      signal: AbortSignal.timeout(5000),
+    });
 
-  const allTools: Record<string, any> = {};
-  const clients: Array<Awaited<ReturnType<typeof createMCPClient>>> = [];
+    if (!resp.ok) {
+      logger.warn("MCP Bridge /tools returned error", { status: resp.status });
+      return {};
+    }
 
-  for (const entry of entries) {
-    try {
-      const client = await createMCPClient({
-        transport: {
-          type: "sse",
-          url: entry.url,
+    const data = (await resp.json()) as { tools: BridgeTool[] };
+    const tools: Record<string, any> = {};
+
+    for (const bridgeTool of data.tools) {
+      // Convert JSON Schema to Zod schema for AI SDK
+      const zodSchema = jsonSchemaToZod(bridgeTool.input_schema);
+
+      tools[bridgeTool.name.replace("/", "_")] = tool({
+        description: bridgeTool.description.trim(),
+        parameters: zodSchema,
+        execute: async (args: any) => {
+          try {
+            const callResp = await fetch(`${bridgeUrl}/call`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ tool: bridgeTool.name, args }),
+              signal: AbortSignal.timeout(30000),
+            });
+
+            if (!callResp.ok) {
+              const errText = await callResp.text();
+              return `Tool error: ${errText}`;
+            }
+
+            const result = (await callResp.json()) as { result: string };
+            return result.result;
+          } catch (err) {
+            logger.warn("MCP tool call failed", { tool: bridgeTool.name, error: err });
+            return `Tool call failed: ${err}`;
+          }
         },
       });
-
-      clients.push(client);
-
-      const serverTools = await client.tools();
-      // Namespace tools with server name prefix to avoid collisions
-      for (const [toolName, tool] of Object.entries(serverTools)) {
-        allTools[`${entry.name}_${toolName}`] = tool;
-      }
-
-      logger.info("Connected to MCP server", {
-        name: entry.name,
-        tools: Object.keys(serverTools),
-      });
-    } catch (err) {
-      logger.warn("Failed to connect to MCP server", {
-        name: entry.name,
-        url: entry.url,
-        error: err,
-      });
-      // Non-fatal: continue without this server's tools
     }
+
+    logger.info("MCP tools loaded from bridge", {
+      url: bridgeUrl,
+      tools: Object.keys(tools),
+    });
+
+    return tools;
+  } catch (err) {
+    logger.warn("Failed to connect to MCP Bridge", { url: bridgeUrl, error: err });
+    return {};
+  }
+}
+
+/**
+ * Convert a JSON Schema object to a Zod schema.
+ * Handles the common types used by MCP tools.
+ */
+function jsonSchemaToZod(schema: Record<string, any>): z.ZodType {
+  const properties = schema.properties || {};
+  const required = new Set(schema.required || []);
+  const shape: Record<string, z.ZodType> = {};
+
+  for (const [key, prop] of Object.entries(properties) as [string, any][]) {
+    let field: z.ZodType;
+
+    switch (prop.type) {
+      case "string":
+        field = z.string().describe(prop.description || prop.title || key);
+        break;
+      case "integer":
+        field = z.number().int().describe(prop.description || prop.title || key);
+        break;
+      case "number":
+        field = z.number().describe(prop.description || prop.title || key);
+        break;
+      case "boolean":
+        field = z.boolean().describe(prop.description || prop.title || key);
+        break;
+      default:
+        field = z.any().describe(prop.description || prop.title || key);
+    }
+
+    if (prop.default !== undefined) {
+      field = field.default(prop.default) as any;
+    }
+
+    if (!required.has(key)) {
+      field = field.optional() as any;
+    }
+
+    shape[key] = field;
   }
 
-  const cleanup = async () => {
-    for (const client of clients) {
-      try {
-        await client.close();
-      } catch {
-        // ignore cleanup errors
-      }
-    }
-  };
-
-  logger.info("MCP tools loaded", { count: Object.keys(allTools).length });
-  return { tools: allTools, cleanup };
+  return z.object(shape);
 }

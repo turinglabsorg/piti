@@ -58,7 +58,10 @@
       "WebFetch(domain:artificialanalysis.ai)",
       "Bash(pnpm:*)",
       "Bash(git commit:*)",
-      "Bash(scp:*)"
+      "Bash(scp:*)",
+      "Bash(docker run:*)",
+      "Bash(curl:*)",
+      "Bash(docker rm:*)"
     ]
   }
 }

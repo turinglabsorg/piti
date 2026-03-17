@@ -4,10 +4,9 @@ import { createLogger } from "@piti/shared";
 
 const logger = createLogger("mcp-manager");
 
-export interface McpServerInfo {
-  name: string;
-  url: string;
-}
+const BRIDGE_CONTAINER = "piti-mcp-bridge";
+const BRIDGE_IMAGE = "piti-mcp-bridge";
+const BRIDGE_PORT = 5100;
 
 export class McpManager {
   private docker: Docker;
@@ -17,81 +16,78 @@ export class McpManager {
   }
 
   /**
-   * For each enabled MCP server in config, ensure the Docker container is running.
-   * Returns an array of MCP server connection info to pass to agents.
+   * Ensure the MCP bridge container is running.
+   * Returns the bridge URL for agent containers, or null if no MCP servers are enabled.
    */
-  async ensureRunning(
+  async ensureBridgeRunning(
     mcpConfig: Record<string, McpServerConfig>
-  ): Promise<McpServerInfo[]> {
-    const servers: McpServerInfo[] = [];
-
-    for (const [name, cfg] of Object.entries(mcpConfig)) {
-      if (!cfg.enabled) {
-        logger.info("MCP server disabled, skipping", { name });
-        continue;
-      }
-
-      const containerName = `piti-mcp-${name}`;
-
-      try {
-        // Check if container already running
-        const existing = this.docker.getContainer(containerName);
-        const inspect = await existing.inspect();
-
-        if (inspect.State.Running) {
-          logger.info("MCP server already running", { name, containerName });
-          servers.push({
-            name,
-            url: `http://host.docker.internal:${cfg.port}/sse`,
-          });
-          continue;
-        }
-
-        // Container exists but not running — remove and recreate
-        await existing.remove({ force: true }).catch(() => {});
-      } catch {
-        // Container doesn't exist, that's fine
-      }
-
-      try {
-        const containerOpts: any = {
-          Image: cfg.image,
-          name: containerName,
-          ExposedPorts: { [`${cfg.port}/tcp`]: {} },
-          HostConfig: {
-            PortBindings: {
-              [`${cfg.port}/tcp`]: [{ HostPort: `${cfg.port}` }],
-            },
-            RestartPolicy: { Name: "unless-stopped" },
-          },
-        };
-
-        if (cfg.command) {
-          containerOpts.Cmd = cfg.command;
-        }
-
-        if (cfg.env) {
-          containerOpts.Env = Object.entries(cfg.env).map(([k, v]) => `${k}=${v}`);
-        }
-
-        const container = await this.docker.createContainer(containerOpts);
-
-        await container.start();
-        logger.info("MCP server started", { name, containerName, port: cfg.port });
-
-        // Wait briefly for it to be ready
-        await new Promise((r) => setTimeout(r, 3000));
-
-        servers.push({
-          name,
-          url: `http://host.docker.internal:${cfg.port}/sse`,
-        });
-      } catch (err) {
-        logger.error("Failed to start MCP server", { name, error: err });
-        // Non-fatal: agent can work without MCP tools
-      }
+  ): Promise<string | null> {
+    // Check if any MCP servers are enabled
+    const hasEnabled = Object.values(mcpConfig).some((cfg) => cfg.enabled);
+    if (!hasEnabled) {
+      logger.info("No MCP servers enabled, skipping bridge");
+      return null;
     }
 
-    return servers;
+    try {
+      // Check if bridge container already running
+      const existing = this.docker.getContainer(BRIDGE_CONTAINER);
+      const inspect = await existing.inspect();
+
+      if (inspect.State.Running) {
+        logger.info("MCP bridge already running");
+        return `http://host.docker.internal:${BRIDGE_PORT}`;
+      }
+
+      // Container exists but not running — remove and recreate
+      await existing.remove({ force: true }).catch(() => {});
+    } catch {
+      // Container doesn't exist, that's fine
+    }
+
+    try {
+      const container = await this.docker.createContainer({
+        Image: BRIDGE_IMAGE,
+        name: BRIDGE_CONTAINER,
+        ExposedPorts: { [`${BRIDGE_PORT}/tcp`]: {} },
+        HostConfig: {
+          PortBindings: {
+            [`${BRIDGE_PORT}/tcp`]: [{ HostPort: `${BRIDGE_PORT}` }],
+          },
+          RestartPolicy: { Name: "unless-stopped" },
+        },
+      });
+
+      await container.start();
+
+      // Wait for health check
+      const healthy = await this.waitForHealth(BRIDGE_PORT, 15_000);
+      if (!healthy) {
+        logger.error("MCP bridge failed health check");
+        return null;
+      }
+
+      logger.info("MCP bridge started", { port: BRIDGE_PORT });
+      return `http://host.docker.internal:${BRIDGE_PORT}`;
+    } catch (err) {
+      logger.error("Failed to start MCP bridge", { error: err });
+      return null;
+    }
+  }
+
+  private async waitForHealth(port: number, timeoutMs: number): Promise<boolean> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const resp = await fetch(`http://localhost:${port}/health`, {
+          signal: AbortSignal.timeout(2000),
+        });
+        if (resp.ok) return true;
+      } catch {
+        // Not ready yet
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    return false;
   }
 }

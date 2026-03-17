@@ -31,6 +31,9 @@ llm:
 mcp:
   search:
     enabled: true
-    image: "mcp/duckduckgo:latest"
-    port: 5100
-    command: ["python", "-m", "duckduckgo_mcp_server.server", "--transport", "sse", "--host", "0.0.0.0", "--port", "5100"]
+    package: "duckduckgo-mcp-server"
+    command: ["python", "-m", "duckduckgo_mcp_server.server"]
+  # example_other:
+  #   enabled: false
+  #   package: "some-other-mcp-server"
+  #   command: ["python", "-m", "some_other_mcp"]

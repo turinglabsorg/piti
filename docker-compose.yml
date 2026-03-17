@@ -50,11 +50,14 @@ services:
     networks:
       - piti
 
-  mcp-search:
-    image: mcp/duckduckgo:latest
-    command: ["python", "-m", "duckduckgo_mcp_server.server", "--transport", "sse", "--host", "0.0.0.0", "--port", "5100"]
+  mcp-bridge:
+    build:
+      context: packages/mcp-bridge
+    image: piti-mcp-bridge
     ports:
       - "5100:5100"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
     restart: unless-stopped
     networks:
       - piti

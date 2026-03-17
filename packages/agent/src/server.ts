@@ -11,22 +11,12 @@ export function createServer() {
 
   // MCP tools — initialized lazily on first request
   let mcpTools: Record<string, any> | null = null;
-  let mcpCleanup: (() => Promise<void>) | null = null;
-  let mcpInitialized = false;
 
   async function getMcpTools(): Promise<Record<string, any>> {
-    if (!mcpInitialized) {
-      mcpInitialized = true;
-      try {
-        const result = await connectMcpTools();
-        mcpTools = result.tools;
-        mcpCleanup = result.cleanup;
-      } catch (err) {
-        logger.warn("MCP tools initialization failed", { error: err });
-        mcpTools = {};
-      }
+    if (mcpTools === null) {
+      mcpTools = await connectMcpTools();
     }
-    return mcpTools || {};
+    return mcpTools;
   }
 
   app.get("/health", async () => {
@@ -41,13 +31,6 @@ export function createServer() {
     } catch (err) {
       logger.error("Chat handler error", { error: err });
       reply.status(500).send({ error: "Internal agent error" });
-    }
-  });
-
-  // Cleanup hook
-  app.addHook("onClose", async () => {
-    if (mcpCleanup) {
-      await mcpCleanup();
     }
   });
 

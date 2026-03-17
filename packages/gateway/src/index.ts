@@ -34,9 +34,9 @@ async function main() {
   redis.on("error", (err) => logger.error("Redis error", { error: err }));
   logger.info("Redis connected");
 
-  // Ensure MCP containers are running
+  // Ensure MCP bridge container is running
   const mcpManager = new McpManager();
-  const mcpServers = await mcpManager.ensureRunning(config.mcp);
+  const mcpBridgeUrl = await mcpManager.ensureBridgeRunning(config.mcp);
 
   // Build env vars to pass to agent containers
   const agentEnvVars: Record<string, string> = {
@@ -52,9 +52,9 @@ async function main() {
     agentEnvVars.OPENROUTER_API_KEY = config.llm.providers.openrouter.api_key;
   }
 
-  // Pass MCP server URLs to agent containers
-  if (mcpServers.length > 0) {
-    agentEnvVars.MCP_SERVERS = JSON.stringify(mcpServers);
+  // Pass MCP bridge URL to agent containers
+  if (mcpBridgeUrl) {
+    agentEnvVars.MCP_BRIDGE_URL = mcpBridgeUrl;
   }
 
   // Start container manager

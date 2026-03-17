@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.1.0",
-    "@ai-sdk/mcp": "^1.0.25",
     "@ai-sdk/openai": "^1.1.0",
     "@piti/shared": "workspace:*",
     "ai": "^4.1.0",

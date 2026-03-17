@@ -4,10 +4,8 @@ import { z } from "zod";
 
 export interface McpServerConfig {
   enabled: boolean;
-  image: string;
-  port: number;
-  command?: string[];
-  env?: Record<string, string>;
+  package: string;
+  command: string[];
 }
 
 export interface GatewayConfig {
@@ -58,7 +56,7 @@ export const agentEnvSchema = z.object({
   KIMI_API_KEY: z.string().optional(),
   OPENROUTER_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
-  MCP_SERVERS: z.string().optional(),
+  MCP_BRIDGE_URL: z.string().optional(),
 });
 
 export type AgentEnv = z.infer<typeof agentEnvSchema>;

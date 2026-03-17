@@ -110,19 +110,15 @@ describe("Environment & Config Validation", () => {
       expect(result.success).toBe(true);
     });
 
-    it("accepts MCP_SERVERS as optional JSON string", () => {
-      const mcpServers = JSON.stringify([
-        { name: "search", url: "http://host.docker.internal:5100/sse" },
-      ]);
-
+    it("accepts MCP_BRIDGE_URL as optional string", () => {
       const result = agentEnvSchema.safeParse({
         DATABASE_URL: "postgresql://user:pass@localhost:5432/db",
-        MCP_SERVERS: mcpServers,
+        MCP_BRIDGE_URL: "http://host.docker.internal:5100",
       });
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.MCP_SERVERS).toBe(mcpServers);
+        expect(result.data.MCP_BRIDGE_URL).toBe("http://host.docker.internal:5100");
       }
     });
   });
