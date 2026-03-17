@@ -10,6 +10,7 @@ import { ContainerManager } from "./orchestrator/containerManager.js";
 import { Dispatcher } from "./orchestrator/dispatcher.js";
 import { createBot } from "./bot/bot.js";
 import { McpManager } from "./orchestrator/mcpManager.js";
+import { startApiServer } from "./api/server.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const logger = createLogger("gateway");
@@ -98,6 +99,19 @@ async function main() {
 
   // Launch bot — drop pending updates to avoid 409 conflict with previous instance
   bot.launch({ dropPendingUpdates: true });
+
+  // Start local HTTP API if enabled
+  if (config.api?.enabled) {
+    await startApiServer(
+      {
+        port: config.api.port,
+        userMap: config.api.user_map,
+      },
+      db,
+      dispatcher
+    );
+  }
+
   logger.info("PITI Gateway started");
 }
 

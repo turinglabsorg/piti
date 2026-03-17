@@ -28,6 +28,13 @@ llm:
     kimi:
       api_key: ""
 
+api:
+  enabled: true
+  port: 3000
+  # Map local API users to telegram user IDs for shared history/memories
+  user_map:
+    local: 0  # set to your telegram user ID to share data
+
 mcp:
   search:
     enabled: true

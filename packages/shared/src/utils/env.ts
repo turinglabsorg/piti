@@ -38,6 +38,11 @@ export interface GatewayConfig {
       [key: string]: { api_key: string };
     };
   };
+  api?: {
+    enabled: boolean;
+    port: number;
+    user_map: Record<string, number>;
+  };
   mcp: {
     [name: string]: McpServerConfig;
   };
