@@ -235,7 +235,15 @@ export function registerCommandHandlers(
 
       if (!subResp.ok) {
         const errText = await subResp.text().catch(() => "");
-        await ctx.reply(`Could not load subscription info (${subResp.status}). Try again later.`);
+        const subErrorMsgs: Record<string, string> = {
+          english: "Could not load subscription info. Try again later.",
+          italian: "Impossibile caricare le info sull'abbonamento. Riprova più tardi.",
+          spanish: "No se pudo cargar la información de suscripción. Inténtalo más tarde.",
+          french: "Impossible de charger les infos d'abonnement. Réessayez plus tard.",
+          german: "Abo-Info konnte nicht geladen werden. Versuche es später erneut.",
+          portuguese: "Não foi possível carregar as informações da assinatura. Tente novamente mais tarde.",
+        };
+        await ctx.reply(subErrorMsgs[lang] || subErrorMsgs.english);
         return;
       }
 
@@ -313,14 +321,14 @@ export function registerCommandHandlers(
         method: "POST",
         headers: { "Content-Type": "application/json", ...billingHeaders },
         body: JSON.stringify({ telegramId, plan: "starter" }),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(30000),
       }).catch(() => null);
 
       const proResp = await fetch(`${opts.billingUrl}/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...billingHeaders },
         body: JSON.stringify({ telegramId, plan: "pro" }),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(30000),
       }).catch(() => null);
 
       if (starterResp?.ok) {
@@ -339,8 +347,17 @@ export function registerCommandHandlers(
           reply_markup: keyboard.length > 0 ? { inline_keyboard: keyboard } : undefined,
         } as any
       );
-    } catch (err: any) {
-      await ctx.reply(`Could not load subscription info: ${err?.message || "unknown error"}`);
+    } catch {
+      const subErrorMsgs2: Record<string, string> = {
+        english: "Could not load subscription info. Try again later.",
+        italian: "Impossibile caricare le info sull'abbonamento. Riprova più tardi.",
+        spanish: "No se pudo cargar la información de suscripción. Inténtalo más tarde.",
+        french: "Impossible de charger les infos d'abonnement. Réessayez plus tard.",
+        german: "Abo-Info konnte nicht geladen werden. Versuche es später erneut.",
+        portuguese: "Não foi possível carregar as informações da assinatura. Tente novamente mais tarde.",
+      };
+      const lang2 = await getUserLang(db, ctx.from?.id || 0).catch(() => "english");
+      await ctx.reply(subErrorMsgs2[lang2] || subErrorMsgs2.english);
     }
   });
 
@@ -354,19 +371,39 @@ export function registerCommandHandlers(
     const telegramId = ctx.from?.id;
     if (!telegramId) return;
 
+    const lang = await getUserLang(db, telegramId);
+    const errorMsgs: Record<string, string> = {
+      english: "Could not check credits. Try again later.",
+      italian: "Impossibile verificare i crediti. Riprova più tardi.",
+      spanish: "No se pudieron verificar los créditos. Inténtalo más tarde.",
+      french: "Impossible de vérifier les crédits. Réessayez plus tard.",
+      german: "Credits konnten nicht überprüft werden. Versuche es später erneut.",
+      portuguese: "Não foi possível verificar os créditos. Tente novamente mais tarde.",
+    };
+    const loadingMsgs: Record<string, string> = {
+      english: "Checking credits...",
+      italian: "Controllo crediti...",
+      spanish: "Verificando créditos...",
+      french: "Vérification des crédits...",
+      german: "Credits werden überprüft...",
+      portuguese: "Verificando créditos...",
+    };
+
     try {
+      await ctx.reply(loadingMsgs[lang] || loadingMsgs.english);
+
       const billingHeaders: Record<string, string> = {};
       if (opts.billingApiSecret) {
         billingHeaders["x-api-secret"] = opts.billingApiSecret;
       }
 
       const resp = await fetch(`${opts.billingUrl}/balance/${telegramId}`, {
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(30000),
         headers: billingHeaders,
       });
 
       if (!resp.ok) {
-        await ctx.reply("Could not check credits. Try again later.");
+        await ctx.reply(errorMsgs[lang] || errorMsgs.english);
         return;
       }
 
@@ -388,7 +425,7 @@ export function registerCommandHandlers(
           method: "POST",
           headers: { "Content-Type": "application/json", ...billingHeaders },
           body: JSON.stringify({ telegramId, plan: "starter" }),
-          signal: AbortSignal.timeout(5000),
+          signal: AbortSignal.timeout(30000),
         }).catch(() => null);
 
         if (starterResp?.ok) {
@@ -399,7 +436,7 @@ export function registerCommandHandlers(
 
       await ctx.reply(msg, { parse_mode: "HTML" });
     } catch {
-      await ctx.reply("Could not check credits. Try again later.");
+      await ctx.reply(errorMsgs[lang] || errorMsgs.english);
     }
   });
 

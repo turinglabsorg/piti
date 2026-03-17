@@ -44,7 +44,7 @@ export class BillingClient {
   async checkBalance(telegramId: number): Promise<BalanceResponse | null> {
     try {
       const resp = await fetch(`${this.config.url}/balance/${telegramId}`, {
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(30000),
         headers: { "x-api-secret": this.config.apiSecret },
       });
       if (!resp.ok) {
@@ -98,7 +98,7 @@ export class BillingClient {
           "x-api-secret": this.config.apiSecret,
         },
         body: JSON.stringify({ telegramId, amount, reason }),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(30000),
       });
 
       if (!resp.ok) {
@@ -128,7 +128,7 @@ export class BillingClient {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ telegramId, plan }),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(30000),
       });
 
       if (!resp.ok) return null;
