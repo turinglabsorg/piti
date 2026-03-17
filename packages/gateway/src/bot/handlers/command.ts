@@ -240,29 +240,34 @@ export function registerCommandHandlers(
 
       if (sub.active) {
         const planName = sub.plan === "starter" ? "Starter ($9.99/month)" : "Pro ($24.99/month)";
-        const start = sub.currentPeriodStart ? new Date(sub.currentPeriodStart).toLocaleDateString() : "—";
         const end = sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : "—";
 
-        let msg = `<b>Active Plan: ${planName}</b>\n\n`;
-        msg += `Credits: <b>${sub.credits}</b>\n`;
-        msg += `Period: ${start} — ${end}\n`;
-
+        let msg = "";
         if (sub.cancelAtPeriodEnd) {
-          msg += `\nSubscription will cancel at end of period.`;
+          msg += `<b>Plan: ${planName} (cancelling)</b>\n\n`;
+          msg += `Credits: <b>${sub.credits}</b>\n`;
+          msg += `Active until: ${end}\n`;
+          msg += `\nYour subscription will not renew. You can keep using your remaining credits until the end of the period.`;
+        } else {
+          msg += `<b>Plan: ${planName}</b>\n\n`;
+          msg += `Credits: <b>${sub.credits}</b>\n`;
+          msg += `Renews: ${end}\n`;
         }
 
-        // Add manage/cancel button
         const keyboard = [];
-        const cancelResp = await fetch(`${opts.billingUrl}/subscription/${telegramId}/cancel`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...billingHeaders },
-          body: JSON.stringify({}),
-          signal: AbortSignal.timeout(5000),
-        }).catch(() => null);
+        if (!sub.cancelAtPeriodEnd) {
+          // Show manage button (leads to Stripe portal where they can cancel)
+          const portalResp = await fetch(`${opts.billingUrl}/subscription/${telegramId}/cancel`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...billingHeaders },
+            body: JSON.stringify({}),
+            signal: AbortSignal.timeout(10000),
+          }).catch(() => null);
 
-        if (cancelResp?.ok) {
-          const { url } = (await cancelResp.json()) as { url: string };
-          keyboard.push([{ text: "Manage Subscription", url }]);
+          if (portalResp?.ok) {
+            const { url } = (await portalResp.json()) as { url: string };
+            keyboard.push([{ text: "Manage Subscription", url }]);
+          }
         }
 
         await ctx.reply(msg, {
