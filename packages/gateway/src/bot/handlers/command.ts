@@ -255,6 +255,7 @@ export function registerCommandHandlers(
         const cancelResp = await fetch(`${opts.billingUrl}/subscription/${telegramId}/cancel`, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...billingHeaders },
+          body: JSON.stringify({}),
           signal: AbortSignal.timeout(5000),
         }).catch(() => null);
 
