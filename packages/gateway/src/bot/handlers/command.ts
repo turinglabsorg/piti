@@ -287,7 +287,7 @@ export function registerCommandHandlers(
 
   bot.command("credits", async (ctx: Context) => {
     if (!opts.billingUrl) {
-      await ctx.reply("Billing is not enabled on this instance.");
+      await ctx.reply("Enjoy PITI for free! No credit limits on this instance.");
       return;
     }
 
