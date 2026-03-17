@@ -4,6 +4,7 @@ const logger = createLogger("billing");
 
 interface BillingConfig {
   url: string;
+  apiSecret: string;
   costs: {
     simple: number;
     complex: number;
@@ -44,6 +45,7 @@ export class BillingClient {
     try {
       const resp = await fetch(`${this.config.url}/balance/${telegramId}`, {
         signal: AbortSignal.timeout(5000),
+        headers: { "x-api-secret": this.config.apiSecret },
       });
       if (!resp.ok) {
         logger.warn("Billing balance check failed", { status: resp.status, telegramId });
@@ -91,7 +93,10 @@ export class BillingClient {
     try {
       const resp = await fetch(`${this.config.url}/deduct`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-secret": this.config.apiSecret,
+        },
         body: JSON.stringify({ telegramId, amount, reason }),
         signal: AbortSignal.timeout(5000),
       });

@@ -63,7 +63,12 @@
       "Bash(curl:*)",
       "Bash(docker rm:*)",
       "Bash(mkdir -p /Users/turinglabs/GIT/@turinglabs/piti-platform)",
-      "Read(//Users/turinglabs/GIT/@turinglabs/**)"
+      "Read(//Users/turinglabs/GIT/@turinglabs/**)",
+      "Bash(mkdir:*)",
+      "Bash(cd:*)",
+      "Bash(gcloud:*)",
+      "Bash(gcloud services:*)",
+      "Bash(openssl rand:*)"
     ]
   }
 }

@@ -82,6 +82,7 @@ async function main() {
   if (config.billing?.enabled && config.billing.url) {
     const billing = new BillingClient({
       url: config.billing.url,
+      apiSecret: config.billing.api_secret,
       costs: config.billing.costs,
     });
     dispatcher.setBilling(billing);

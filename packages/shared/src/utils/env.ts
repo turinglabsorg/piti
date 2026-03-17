@@ -41,6 +41,7 @@ export interface GatewayConfig {
   billing?: {
     enabled: boolean;
     url: string;
+    api_secret: string;
     costs: {
       simple: number;
       complex: number;

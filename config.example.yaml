@@ -31,6 +31,7 @@ llm:
 billing:
   enabled: false
   url: ""  # Cloud Run URL for billing backend
+  api_secret: ""  # shared secret between PITI and billing backend
   costs:
     simple: 1       # Flash model message
     complex: 3      # Pro model message
