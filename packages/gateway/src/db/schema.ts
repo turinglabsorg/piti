@@ -54,6 +54,22 @@ export const tokenUsage = pgTable(
   (table) => [index("token_usage_user_id_idx").on(table.userId)]
 );
 
+export const mcpCalls = pgTable(
+  "mcp_calls",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .references(() => users.id)
+      .notNull(),
+    server: varchar("server", { length: 100 }).notNull(),
+    tool: varchar("tool", { length: 100 }).notNull(),
+    args: jsonb("args").default({}).$type<Record<string, unknown>>(),
+    durationMs: integer("duration_ms").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("mcp_calls_user_id_idx").on(table.userId)]
+);
+
 export const memories = pgTable(
   "memories",
   {

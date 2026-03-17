@@ -51,3 +51,16 @@ CREATE TABLE IF NOT EXISTS token_usage (
 );
 
 CREATE INDEX IF NOT EXISTS token_usage_user_id_idx ON token_usage(user_id);
+
+-- MCP tool call tracking
+CREATE TABLE IF NOT EXISTS mcp_calls (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) NOT NULL,
+  server VARCHAR(100) NOT NULL,
+  tool VARCHAR(100) NOT NULL,
+  args JSONB DEFAULT '{}',
+  duration_ms INTEGER NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS mcp_calls_user_id_idx ON mcp_calls(user_id);

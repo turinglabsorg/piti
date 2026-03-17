@@ -1,8 +1,8 @@
 import { eq, desc, sql } from "drizzle-orm";
 import type { Database } from "../db/client.js";
-import { users, messages, memories, tokenUsage } from "../db/schema.js";
+import { users, messages, memories, tokenUsage, mcpCalls } from "../db/schema.js";
 import { ContainerManager } from "./containerManager.js";
-import type { AgentRequest, AgentResponse, ChatMessage, Memory, MediaAttachment, TokenUsage } from "@piti/shared";
+import type { AgentRequest, AgentResponse, ChatMessage, Memory, MediaAttachment, TokenUsage, McpCall } from "@piti/shared";
 import { createLogger } from "@piti/shared";
 
 const logger = createLogger("dispatcher");
@@ -95,6 +95,11 @@ export class Dispatcher {
     // 9. Save token usage
     if (response.tokenUsage?.length) {
       await this.saveTokenUsage(user.id, response.tokenUsage);
+    }
+
+    // 10. Save MCP call logs
+    if (response.mcpCalls?.length) {
+      await this.saveMcpCalls(user.id, response.mcpCalls);
     }
 
     return {
@@ -226,6 +231,26 @@ export class Dispatcher {
     const totalIn = usage.reduce((s, u) => s + u.inputTokens, 0);
     const totalOut = usage.reduce((s, u) => s + u.outputTokens, 0);
     logger.info("Token usage saved", { userId, calls: usage.length, totalIn, totalOut });
+  }
+
+  private async saveMcpCalls(userId: number, calls: McpCall[]) {
+    if (calls.length === 0) return;
+
+    await this.db.insert(mcpCalls).values(
+      calls.map((c) => ({
+        userId,
+        server: c.server,
+        tool: c.tool,
+        args: c.args,
+        durationMs: c.durationMs,
+      }))
+    );
+
+    logger.info("MCP calls saved", {
+      userId,
+      count: calls.length,
+      tools: calls.map((c) => `${c.server}/${c.tool}`),
+    });
   }
 }
 

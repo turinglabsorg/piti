@@ -33,10 +33,18 @@ export interface TokenUsage {
   purpose: "chat" | "classification" | "memory_extraction";
 }
 
+export interface McpCall {
+  server: string;
+  tool: string;
+  args: Record<string, any>;
+  durationMs: number;
+}
+
 export interface AgentResponse {
   reply: string;
   newMemories?: ExtractedMemory[];
   tokenUsage?: TokenUsage[];
+  mcpCalls?: McpCall[];
 }
 
 export interface ExtractedMemory {

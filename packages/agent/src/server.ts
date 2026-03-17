@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import { handleChat } from "./agent/trainer.js";
-import { connectMcpTools } from "./mcp/client.js";
+import { connectMcpTools, type McpToolsResult } from "./mcp/client.js";
 import type { AgentRequest } from "@piti/shared";
 import { createLogger } from "@piti/shared";
 
@@ -10,13 +10,13 @@ export function createServer() {
   const app = Fastify({ logger: false });
 
   // MCP tools — initialized lazily on first request
-  let mcpTools: Record<string, any> | null = null;
+  let mcpResult: McpToolsResult | null = null;
 
-  async function getMcpTools(): Promise<Record<string, any>> {
-    if (mcpTools === null) {
-      mcpTools = await connectMcpTools();
+  async function getMcpResult(): Promise<McpToolsResult> {
+    if (mcpResult === null) {
+      mcpResult = await connectMcpTools();
     }
-    return mcpTools;
+    return mcpResult;
   }
 
   app.get("/health", async () => {
@@ -25,8 +25,12 @@ export function createServer() {
 
   app.post<{ Body: AgentRequest }>("/chat", async (request, reply) => {
     try {
-      const tools = await getMcpTools();
-      const result = await handleChat(request.body, tools);
+      const mcp = await getMcpResult();
+      // Clear calls from previous request
+      mcp.calls.length = 0;
+      const result = await handleChat(request.body, mcp.tools);
+      // Attach MCP calls to the response
+      result.mcpCalls = mcp.calls.slice();
       return result;
     } catch (err) {
       logger.error("Chat handler error", { error: err });

@@ -1,7 +1,7 @@
 import type { Context } from "telegraf";
 import { eq, sql } from "drizzle-orm";
 import type { Database } from "../../db/client.js";
-import { users, messages, memories, tokenUsage } from "../../db/schema.js";
+import { users, messages, memories, tokenUsage, mcpCalls } from "../../db/schema.js";
 import { LLM_PROVIDERS, LLM_MODELS } from "@piti/shared";
 
 export interface CommandHandlerOpts {
@@ -259,7 +259,26 @@ export function registerCommandHandlers(
       }
     }
 
+    // Get MCP call stats
+    const mcpStats = await db
+      .select({
+        tool: mcpCalls.tool,
+        server: mcpCalls.server,
+        calls: sql<number>`COUNT(*)`,
+        avgMs: sql<number>`ROUND(AVG(${mcpCalls.durationMs}))`,
+      })
+      .from(mcpCalls)
+      .where(eq(mcpCalls.userId, user[0].id))
+      .groupBy(mcpCalls.server, mcpCalls.tool);
+
     statusMsg += `\n<b>MCP Services:</b>\n${mcpInfo}`;
+
+    if (mcpStats.length > 0) {
+      statusMsg += `\n\n<b>MCP Usage:</b>\n`;
+      for (const s of mcpStats) {
+        statusMsg += `• ${s.server}/${s.tool}: ${s.calls} calls, avg ${s.avgMs}ms\n`;
+      }
+    }
 
     await ctx.reply(statusMsg, { parse_mode: "HTML" });
   });
