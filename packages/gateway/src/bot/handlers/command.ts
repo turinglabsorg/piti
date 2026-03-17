@@ -404,8 +404,7 @@ export function registerCommandHandlers(
       });
 
       if (!resp.ok) {
-        const errBody = await resp.text().catch(() => "");
-        await ctx.reply(`${errorMsgs[lang] || errorMsgs.english} (${resp.status}: ${errBody})`);
+        await ctx.reply(errorMsgs[lang] || errorMsgs.english);
         return;
       }
 
