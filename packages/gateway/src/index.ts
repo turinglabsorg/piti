@@ -1,63 +1,84 @@
-import dotenv from "dotenv";
+import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: resolve(__dirname, "../../../.env") });
+import { parse as parseYaml } from "yaml";
 import Redis from "ioredis";
-import { gatewayEnvSchema } from "@piti/shared";
+import type { GatewayConfig } from "@piti/shared";
 import { createLogger } from "@piti/shared";
 import { getDb, closeDb } from "./db/client.js";
 import { ContainerManager } from "./orchestrator/containerManager.js";
 import { Dispatcher } from "./orchestrator/dispatcher.js";
 import { createBot } from "./bot/bot.js";
+import { McpManager } from "./orchestrator/mcpManager.js";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const logger = createLogger("gateway");
 
+function loadConfig(): GatewayConfig {
+  const configPath = resolve(__dirname, "../../../config.yaml");
+  const raw = readFileSync(configPath, "utf-8");
+  return parseYaml(raw) as GatewayConfig;
+}
+
 async function main() {
-  // Validate env
-  const env = gatewayEnvSchema.parse(process.env);
+  // Load YAML config
+  const config = loadConfig();
+  logger.info("Config loaded from config.yaml");
 
   // Connect to DB
-  const db = getDb(env.DATABASE_URL);
+  const db = getDb(config.database.url);
   logger.info("Database connected");
 
   // Connect to Redis
-  const redis = new Redis(env.REDIS_URL);
+  const redis = new Redis(config.redis.url);
   redis.on("error", (err) => logger.error("Redis error", { error: err }));
   logger.info("Redis connected");
 
+  // Ensure MCP containers are running
+  const mcpManager = new McpManager();
+  const mcpServers = await mcpManager.ensureRunning(config.mcp);
+
   // Build env vars to pass to agent containers
-  // Agent containers run inside Docker and need internal URLs
   const agentEnvVars: Record<string, string> = {
-    DATABASE_URL: env.AGENT_DATABASE_URL || env.DATABASE_URL,
+    DATABASE_URL: config.database.agent_url || config.database.url,
   };
-  if (env.ANTHROPIC_API_KEY) agentEnvVars.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
-  if (env.KIMI_API_KEY) agentEnvVars.KIMI_API_KEY = env.KIMI_API_KEY;
-  if (env.OPENROUTER_API_KEY) agentEnvVars.OPENROUTER_API_KEY = env.OPENROUTER_API_KEY;
-  if (env.OPENAI_API_KEY) agentEnvVars.OPENAI_API_KEY = env.OPENAI_API_KEY;
+  if (config.llm.providers.anthropic?.api_key) {
+    agentEnvVars.ANTHROPIC_API_KEY = config.llm.providers.anthropic.api_key;
+  }
+  if (config.llm.providers.kimi?.api_key) {
+    agentEnvVars.KIMI_API_KEY = config.llm.providers.kimi.api_key;
+  }
+  if (config.llm.providers.openrouter?.api_key) {
+    agentEnvVars.OPENROUTER_API_KEY = config.llm.providers.openrouter.api_key;
+  }
+
+  // Pass MCP server URLs to agent containers
+  if (mcpServers.length > 0) {
+    agentEnvVars.MCP_SERVERS = JSON.stringify(mcpServers);
+  }
 
   // Start container manager
   const containerManager = new ContainerManager(redis, {
-    imageName: env.AGENT_IMAGE,
-    portStart: env.AGENT_PORT_RANGE_START,
-    portEnd: env.AGENT_PORT_RANGE_END,
-    idleTimeoutMs: env.CONTAINER_IDLE_TIMEOUT_MS,
+    imageName: config.docker.agent_image,
+    portStart: config.docker.port_range[0],
+    portEnd: config.docker.port_range[1],
+    idleTimeoutMs: config.docker.idle_timeout_ms,
   });
   await containerManager.start();
 
   // Create dispatcher
   const dispatcher = new Dispatcher(db, containerManager, agentEnvVars, {
-    llmProvider: env.DEFAULT_LLM_PROVIDER,
-    llmModel: env.DEFAULT_LLM_MODEL,
-    routerModel: env.DEFAULT_ROUTER_MODEL,
-    smartModel: env.DEFAULT_SMART_MODEL,
-    language: env.DEFAULT_LANGUAGE,
+    llmProvider: config.llm.default_provider,
+    llmModel: config.llm.default_model,
+    routerModel: config.llm.router_model,
+    smartModel: config.llm.smart_model,
+    language: config.llm.default_language,
   });
 
   // Create and start bot
-  const bot = createBot(env.TELEGRAM_BOT_TOKEN, db, dispatcher, {
-    allowedUsers: env.TELEGRAM_ALLOWED_USERS,
+  const allowedUsersStr = (config.telegram.allowed_users || []).join(",");
+  const bot = createBot(config.telegram.token, db, dispatcher, {
+    allowedUsers: allowedUsersStr,
   });
 
   // Graceful shutdown
@@ -74,7 +95,6 @@ async function main() {
   process.on("SIGTERM", shutdown);
 
   // Launch bot — drop pending updates to avoid 409 conflict with previous instance
-  // bot.launch() starts long-polling and never resolves, so don't await it
   bot.launch({ dropPendingUpdates: true });
   logger.info("PITI Gateway started");
 }

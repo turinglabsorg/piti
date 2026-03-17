@@ -1,26 +1,53 @@
 import { z } from "zod";
 
-export const gatewayEnvSchema = z.object({
-  TELEGRAM_BOT_TOKEN: z.string().min(1),
-  DATABASE_URL: z.string().url(),
-  REDIS_URL: z.string().min(1),
-  ANTHROPIC_API_KEY: z.string().optional(),
-  KIMI_API_KEY: z.string().optional(),
-  OPENROUTER_API_KEY: z.string().optional(),
-  OPENAI_API_KEY: z.string().optional(),
-  AGENT_IMAGE: z.string().default("piti-agent"),
-  AGENT_PORT_RANGE_START: z.coerce.number().default(4000),
-  AGENT_PORT_RANGE_END: z.coerce.number().default(4100),
-  CONTAINER_IDLE_TIMEOUT_MS: z.coerce.number().default(3600000),
-  DEFAULT_LLM_PROVIDER: z.string().default("claude"),
-  DEFAULT_LLM_MODEL: z.string().default("claude-sonnet-4-20250514"),
-  DEFAULT_ROUTER_MODEL: z.string().default("google/gemini-2.5-flash"),
-  DEFAULT_SMART_MODEL: z.string().default("google/gemini-2.5-pro"),
-  DEFAULT_LANGUAGE: z.string().default("english"),
-  AGENT_DATABASE_URL: z.string().optional(),
-  // Comma-separated Telegram user IDs. Empty = anyone can use the bot.
-  TELEGRAM_ALLOWED_USERS: z.string().default(""),
-});
+// ── Gateway Config (loaded from config.yaml) ──
+
+export interface McpServerConfig {
+  enabled: boolean;
+  image: string;
+  port: number;
+}
+
+export interface GatewayConfig {
+  telegram: {
+    token: string;
+    allowed_users: number[];
+  };
+  database: {
+    url: string;
+    agent_url: string;
+  };
+  redis: {
+    url: string;
+  };
+  docker: {
+    agent_image: string;
+    port_range: [number, number];
+    idle_timeout_ms: number;
+  };
+  llm: {
+    default_provider: string;
+    default_model: string;
+    router_model: string;
+    smart_model: string;
+    default_language: string;
+    providers: {
+      openrouter: { api_key: string };
+      anthropic: { api_key: string };
+      kimi: { api_key: string };
+      [key: string]: { api_key: string };
+    };
+  };
+  mcp: {
+    [name: string]: McpServerConfig;
+  };
+}
+
+// Keep the old export name so existing imports don't break at type level.
+// Tests that used gatewayEnvSchema.safeParse() will be updated.
+export type GatewayEnv = GatewayConfig;
+
+// ── Agent Env (still env-var based, passed by gateway to containers) ──
 
 export const agentEnvSchema = z.object({
   PORT: z.coerce.number().default(3001),
@@ -29,7 +56,7 @@ export const agentEnvSchema = z.object({
   KIMI_API_KEY: z.string().optional(),
   OPENROUTER_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
+  MCP_SERVERS: z.string().optional(),
 });
 
-export type GatewayEnv = z.infer<typeof gatewayEnvSchema>;
 export type AgentEnv = z.infer<typeof agentEnvSchema>;

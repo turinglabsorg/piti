@@ -6,15 +6,12 @@ services:
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./config.yaml:/app/config.yaml:ro
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql://piti:${DB_PASSWORD:-piti_secret}@postgres:5432/piti
-      REDIS_URL: redis://redis:6379
     networks:
       - piti
 
@@ -50,6 +47,16 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - piti
+
+  mcp-search:
+    build:
+      context: packages/mcp-search
+    image: piti-mcp-search
+    ports:
+      - "5100:5100"
+    restart: unless-stopped
     networks:
       - piti
 

@@ -1,0 +1,35 @@
+telegram:
+  token: "YOUR_TELEGRAM_BOT_TOKEN"
+  allowed_users: []
+
+database:
+  url: "postgresql://piti:piti_secret@localhost:5433/piti"
+  agent_url: "postgresql://piti:piti_secret@host.docker.internal:5433/piti"
+
+redis:
+  url: "redis://localhost:6379"
+
+docker:
+  agent_image: "piti-agent"
+  port_range: [4000, 4100]
+  idle_timeout_ms: 3600000
+
+llm:
+  default_provider: "openrouter"
+  default_model: "google/gemini-2.5-flash"
+  router_model: "google/gemini-2.5-flash"
+  smart_model: "google/gemini-2.5-pro"
+  default_language: "italian"
+  providers:
+    openrouter:
+      api_key: "YOUR_OPENROUTER_API_KEY"
+    anthropic:
+      api_key: ""
+    kimi:
+      api_key: ""
+
+mcp:
+  search:
+    enabled: true
+    image: "piti-mcp-search"
+    port: 5100

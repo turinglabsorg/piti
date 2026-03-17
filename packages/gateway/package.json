@@ -12,12 +12,13 @@
   },
   "dependencies": {
     "@piti/shared": "workspace:*",
-    "telegraf": "^4.16.0",
     "dockerode": "^4.0.0",
+    "dotenv": "^16.4.0",
     "drizzle-orm": "^0.39.0",
-    "postgres": "^3.4.0",
     "ioredis": "^5.4.0",
-    "dotenv": "^16.4.0"
+    "postgres": "^3.4.0",
+    "telegraf": "^4.16.0",
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
     "@types/dockerode": "^3.3.0",

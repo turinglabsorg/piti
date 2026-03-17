@@ -10,7 +10,10 @@ const logger = createLogger("trainer");
 
 type Complexity = "simple" | "complex";
 
-export async function handleChat(request: AgentRequest): Promise<AgentResponse> {
+export async function handleChat(
+  request: AgentRequest,
+  mcpTools: Record<string, any> = {}
+): Promise<AgentResponse> {
   const allTokenUsage: TokenUsage[] = [];
 
   // Layer 1: fast heuristic guard
@@ -70,11 +73,13 @@ export async function handleChat(request: AgentRequest): Promise<AgentResponse> 
   }
 
   try {
+    const hasTools = Object.keys(mcpTools).length > 0;
     const result = await generateText({
       model,
       system: systemPrompt,
       messages,
       maxTokens: getMaxTokens(selectedModel),
+      ...(hasTools ? { tools: mcpTools, maxSteps: 5 } : {}),
     });
 
     const reply = result.text;
