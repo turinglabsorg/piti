@@ -14,9 +14,10 @@ import { McpManager } from "./orchestrator/mcpManager.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const logger = createLogger("gateway");
 
+const CONFIG_PATH = resolve(__dirname, "../../../config.yaml");
+
 function loadConfig(): GatewayConfig {
-  const configPath = resolve(__dirname, "../../../config.yaml");
-  const raw = readFileSync(configPath, "utf-8");
+  const raw = readFileSync(CONFIG_PATH, "utf-8");
   return parseYaml(raw) as GatewayConfig;
 }
 
@@ -35,7 +36,7 @@ async function main() {
   logger.info("Redis connected");
 
   // Ensure MCP bridge container is running
-  const mcpManager = new McpManager();
+  const mcpManager = new McpManager(CONFIG_PATH);
   const mcpBridgeUrl = await mcpManager.ensureBridgeRunning(config.mcp);
 
   // Build env vars to pass to agent containers

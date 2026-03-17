@@ -10,9 +10,11 @@ const BRIDGE_PORT = 5100;
 
 export class McpManager {
   private docker: Docker;
+  private configPath: string;
 
-  constructor() {
+  constructor(configPath: string) {
     this.docker = new Docker({ socketPath: "/var/run/docker.sock" });
+    this.configPath = configPath;
   }
 
   /**
@@ -54,6 +56,7 @@ export class McpManager {
           PortBindings: {
             [`${BRIDGE_PORT}/tcp`]: [{ HostPort: `${BRIDGE_PORT}` }],
           },
+          Binds: [`${this.configPath}:/app/config.yaml:ro`],
           RestartPolicy: { Name: "unless-stopped" },
         },
       });

@@ -84,6 +84,21 @@ export async function handleChat(
 
     const reply = result.text;
 
+    // Log MCP tool usage
+    if (result.steps) {
+      for (const step of result.steps) {
+        if (step.toolCalls?.length) {
+          for (const tc of step.toolCalls) {
+            logger.info("MCP tool used", {
+              userId: request.userId,
+              tool: tc.toolName,
+              args: tc.args,
+            });
+          }
+        }
+      }
+    }
+
     // Track chat token usage
     if (result.usage) {
       allTokenUsage.push({
