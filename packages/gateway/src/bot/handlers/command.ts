@@ -397,18 +397,19 @@ export function registerCommandHandlers(
         billingHeaders["x-api-secret"] = opts.billingApiSecret;
       }
 
-      const resp = await fetch(`${opts.billingUrl}/balance/${telegramId}`, {
+      const url = `${opts.billingUrl}/balance/${telegramId}`;
+      const resp = await fetch(url, {
         signal: AbortSignal.timeout(30000),
         headers: billingHeaders,
       });
 
       if (!resp.ok) {
-        await ctx.reply(errorMsgs[lang] || errorMsgs.english);
+        const errBody = await resp.text().catch(() => "");
+        await ctx.reply(`${errorMsgs[lang] || errorMsgs.english} (${resp.status}: ${errBody})`);
         return;
       }
 
       const data = (await resp.json()) as { telegramId: number; credits: number; plan: string };
-      const lang = await getUserLang(db, telegramId);
       const t = creditsTranslations[lang] || creditsTranslations.english;
 
       let msg = `<b>${t.title}</b>\n\n`;
