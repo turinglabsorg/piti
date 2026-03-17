@@ -38,6 +38,16 @@ export interface GatewayConfig {
       [key: string]: { api_key: string };
     };
   };
+  billing?: {
+    enabled: boolean;
+    url: string;
+    costs: {
+      simple: number;
+      complex: number;
+      vision: number;
+      mcp_call: number;
+    };
+  };
   api?: {
     enabled: boolean;
     port: number;

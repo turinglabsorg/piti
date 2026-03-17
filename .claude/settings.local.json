@@ -61,7 +61,9 @@
       "Bash(scp:*)",
       "Bash(docker run:*)",
       "Bash(curl:*)",
-      "Bash(docker rm:*)"
+      "Bash(docker rm:*)",
+      "Bash(mkdir -p /Users/turinglabs/GIT/@turinglabs/piti-platform)",
+      "Read(//Users/turinglabs/GIT/@turinglabs/**)"
     ]
   }
 }

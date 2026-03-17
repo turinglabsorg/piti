@@ -28,6 +28,15 @@ llm:
     kimi:
       api_key: ""
 
+billing:
+  enabled: false
+  url: ""  # Cloud Run URL for billing backend
+  costs:
+    simple: 1       # Flash model message
+    complex: 3      # Pro model message
+    vision: 5       # Photo/video analysis
+    mcp_call: 1     # Per MCP tool call
+
 api:
   enabled: true
   port: 3000

@@ -11,6 +11,7 @@ import { Dispatcher } from "./orchestrator/dispatcher.js";
 import { createBot } from "./bot/bot.js";
 import { McpManager } from "./orchestrator/mcpManager.js";
 import { startApiServer } from "./api/server.js";
+import { BillingClient } from "./billing/client.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const logger = createLogger("gateway");
@@ -77,11 +78,22 @@ async function main() {
     language: config.llm.default_language,
   });
 
+  // Set up billing if enabled
+  if (config.billing?.enabled && config.billing.url) {
+    const billing = new BillingClient({
+      url: config.billing.url,
+      costs: config.billing.costs,
+    });
+    dispatcher.setBilling(billing);
+    logger.info("Billing enabled", { url: config.billing.url });
+  }
+
   // Create and start bot
   const allowedUsersStr = (config.telegram.allowed_users || []).join(",");
   const bot = createBot(config.telegram.token, db, dispatcher, {
     allowedUsers: allowedUsersStr,
     mcpBridgeUrl: mcpBridgeUrl ? `http://localhost:${5100}` : undefined,
+    billingUrl: config.billing?.enabled ? config.billing.url : undefined,
   });
 
   // Graceful shutdown

@@ -4,6 +4,7 @@ import { users, messages, memories, tokenUsage, mcpCalls } from "../db/schema.js
 import { ContainerManager } from "./containerManager.js";
 import type { AgentRequest, AgentResponse, ChatMessage, Memory, MediaAttachment, TokenUsage, McpCall } from "@piti/shared";
 import { createLogger } from "@piti/shared";
+import type { BillingClient } from "../billing/client.js";
 
 const logger = createLogger("dispatcher");
 
@@ -14,6 +15,7 @@ export interface DispatchResult {
   reply: string;
   isNewUser: boolean;
   detectedLanguage?: string;
+  creditsRemaining?: number;
 }
 
 export interface DispatcherDefaults {
@@ -25,6 +27,8 @@ export interface DispatcherDefaults {
 }
 
 export class Dispatcher {
+  private billing: BillingClient | null = null;
+
   constructor(
     private db: Database,
     private containerManager: ContainerManager,
@@ -37,6 +41,10 @@ export class Dispatcher {
       language: "english",
     }
   ) {}
+
+  setBilling(billing: BillingClient) {
+    this.billing = billing;
+  }
 
   async dispatch(
     telegramId: number,
@@ -80,7 +88,22 @@ export class Dispatcher {
       media,
     };
 
-    // 6. Get or create container and send message
+    // 6. Check billing (if enabled)
+    if (this.billing) {
+      const balance = await this.billing.checkBalance(telegramId);
+      if (balance && balance.credits <= 0) {
+        const checkoutUrl = await this.billing.getCheckoutUrl(telegramId, "starter");
+        const buyMsg = checkoutUrl
+          ? `\n\nPer continuare ad usare PITI, acquista dei crediti: ${checkoutUrl}`
+          : "";
+        return {
+          reply: `Hai esaurito i crediti gratuiti.${buyMsg}`,
+          isNewUser: isNew,
+        };
+      }
+    }
+
+    // 7. Get or create container and send message
     await this.containerManager.getOrCreateContainer(user.id, this.envVars);
     const response = await this.containerManager.sendMessage(user.id, request);
 
@@ -102,10 +125,32 @@ export class Dispatcher {
       await this.saveMcpCalls(user.id, response.mcpCalls);
     }
 
+    // 11. Deduct billing credits (if enabled)
+    let creditsRemaining: number | undefined;
+    if (this.billing) {
+      const hasVision = !!media;
+      const isComplex = response.tokenUsage?.some(
+        (t) => t.model === this.defaults.smartModel && t.purpose === "chat"
+      ) ?? false;
+      const mcpCallCount = response.mcpCalls?.length ?? 0;
+
+      const cost = this.billing.calculateCost({ isComplex, hasVision, mcpCallCount });
+      const reason = [
+        hasVision ? "vision" : isComplex ? "complex" : "simple",
+        mcpCallCount > 0 ? `+${mcpCallCount}mcp` : "",
+      ].filter(Boolean).join("_");
+
+      const deductResult = await this.billing.deduct(telegramId, cost, reason);
+      if (deductResult && "credits" in deductResult && !("error" in deductResult)) {
+        creditsRemaining = deductResult.credits;
+      }
+    }
+
     return {
       reply: response.reply,
       isNewUser: isNew,
       detectedLanguage: isNew ? detectedLanguage : undefined,
+      creditsRemaining,
     };
   }
 

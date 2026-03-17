@@ -6,6 +6,7 @@ import { LLM_PROVIDERS, LLM_MODELS } from "@piti/shared";
 
 export interface CommandHandlerOpts {
   mcpBridgeUrl?: string;
+  billingUrl?: string;
 }
 
 export function registerCommandHandlers(
@@ -28,6 +29,7 @@ export function registerCommandHandlers(
         "/memories - View what I remember about you\n" +
         "/reset - Reset conversation history\n" +
         "/status - View agent status & MCP services\n" +
+        "/credits - Check your credit balance\n" +
         "/help - Show this message\n\n" +
         "Just send me a message to get started!"
     );
@@ -281,6 +283,57 @@ export function registerCommandHandlers(
     }
 
     await ctx.reply(statusMsg, { parse_mode: "HTML" });
+  });
+
+  bot.command("credits", async (ctx: Context) => {
+    if (!opts.billingUrl) {
+      await ctx.reply("Billing is not enabled on this instance.");
+      return;
+    }
+
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    try {
+      const resp = await fetch(`${opts.billingUrl}/balance/${telegramId}`, {
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!resp.ok) {
+        await ctx.reply("Could not check credits. Try again later.");
+        return;
+      }
+
+      const data = (await resp.json()) as { telegramId: number; credits: number; plan: string };
+
+      let msg = `<b>Your Credits</b>\n\n`;
+      msg += `Plan: <b>${data.plan}</b>\n`;
+      msg += `Credits remaining: <b>${data.credits}</b>\n\n`;
+      msg += `<b>Credit costs:</b>\n`;
+      msg += `• Simple question: 1 credit\n`;
+      msg += `• Detailed plan: 3 credits\n`;
+      msg += `• Photo/video analysis: 5 credits\n`;
+      msg += `• Web search: +1 credit\n`;
+
+      if (data.credits <= 10) {
+        // Generate checkout links
+        const starterResp = await fetch(`${opts.billingUrl}/checkout`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ telegramId, plan: "starter" }),
+          signal: AbortSignal.timeout(5000),
+        }).catch(() => null);
+
+        if (starterResp?.ok) {
+          const { url } = (await starterResp.json()) as { url: string };
+          msg += `\n<a href="${url}">Buy Starter (300 credits) - $9.99/month</a>`;
+        }
+      }
+
+      await ctx.reply(msg, { parse_mode: "HTML" });
+    } catch {
+      await ctx.reply("Could not check credits. Try again later.");
+    }
   });
 
   bot.command("reset", async (ctx: Context) => {
