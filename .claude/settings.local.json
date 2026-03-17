@@ -56,7 +56,9 @@
       "Bash(pkill:*)",
       "WebFetch(domain:openrouter.ai)",
       "WebFetch(domain:artificialanalysis.ai)",
-      "Bash(pnpm:*)"
+      "Bash(pnpm:*)",
+      "Bash(git commit:*)",
+      "Bash(scp:*)"
     ]
   }
 }

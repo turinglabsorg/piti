@@ -54,7 +54,7 @@ export class McpManager {
       }
 
       try {
-        const container = await this.docker.createContainer({
+        const containerOpts: any = {
           Image: cfg.image,
           name: containerName,
           ExposedPorts: { [`${cfg.port}/tcp`]: {} },
@@ -64,7 +64,17 @@ export class McpManager {
             },
             RestartPolicy: { Name: "unless-stopped" },
           },
-        });
+        };
+
+        if (cfg.command) {
+          containerOpts.Cmd = cfg.command;
+        }
+
+        if (cfg.env) {
+          containerOpts.Env = Object.entries(cfg.env).map(([k, v]) => `${k}=${v}`);
+        }
+
+        const container = await this.docker.createContainer(containerOpts);
 
         await container.start();
         logger.info("MCP server started", { name, containerName, port: cfg.port });

@@ -51,9 +51,8 @@ services:
       - piti
 
   mcp-search:
-    build:
-      context: packages/mcp-search
-    image: piti-mcp-search
+    image: mcp/duckduckgo:latest
+    command: ["python", "-m", "duckduckgo_mcp_server.server", "--transport", "sse", "--host", "0.0.0.0", "--port", "5100"]
     ports:
       - "5100:5100"
     restart: unless-stopped

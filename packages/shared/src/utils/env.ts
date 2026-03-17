@@ -6,6 +6,8 @@ export interface McpServerConfig {
   enabled: boolean;
   image: string;
   port: number;
+  command?: string[];
+  env?: Record<string, string>;
 }
 
 export interface GatewayConfig {
