@@ -25,9 +25,18 @@ export interface AgentRequest {
   media?: MediaAttachment;
 }
 
+export interface TokenUsage {
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  purpose: "chat" | "classification" | "memory_extraction";
+}
+
 export interface AgentResponse {
   reply: string;
   newMemories?: ExtractedMemory[];
+  tokenUsage?: TokenUsage[];
 }
 
 export interface ExtractedMemory {

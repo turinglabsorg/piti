@@ -37,6 +37,23 @@ export const messages = pgTable(
   (table) => [index("messages_user_id_idx").on(table.userId)]
 );
 
+export const tokenUsage = pgTable(
+  "token_usage",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .references(() => users.id)
+      .notNull(),
+    provider: varchar("provider", { length: 50 }).notNull(),
+    model: varchar("model", { length: 100 }).notNull(),
+    inputTokens: integer("input_tokens").notNull(),
+    outputTokens: integer("output_tokens").notNull(),
+    purpose: varchar("purpose", { length: 30 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("token_usage_user_id_idx").on(table.userId)]
+);
+
 export const memories = pgTable(
   "memories",
   {

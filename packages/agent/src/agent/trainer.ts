@@ -2,7 +2,7 @@ import { generateText } from "ai";
 import { getModel } from "../llm/provider.js";
 import { buildSystemPrompt } from "./systemPrompt.js";
 import { isObviouslyOffTopic, REFUSAL_MESSAGE } from "./guard.js";
-import type { AgentRequest, AgentResponse, ExtractedMemory, MediaAttachment } from "@piti/shared";
+import type { AgentRequest, AgentResponse, ExtractedMemory, MediaAttachment, TokenUsage } from "@piti/shared";
 import { getMaxTokens } from "@piti/shared";
 import { createLogger } from "@piti/shared";
 
@@ -11,24 +11,28 @@ const logger = createLogger("trainer");
 type Complexity = "simple" | "complex";
 
 export async function handleChat(request: AgentRequest): Promise<AgentResponse> {
-  const routerModel = getModel(request.llmProvider, request.routerModel);
+  const allTokenUsage: TokenUsage[] = [];
 
   // Layer 1: fast heuristic guard
   if (isObviouslyOffTopic(request.message)) {
     logger.info("Guard blocked (heuristic)", { userId: request.userId });
-    return { reply: REFUSAL_MESSAGE, newMemories: [] };
+    return { reply: REFUSAL_MESSAGE, newMemories: [], tokenUsage: [] };
   }
 
   // Layer 2: router model classifies + guards in one call
-  const classification = await classifyMessage(
+  const { result: classification, usage: classificationUsage } = await classifyMessage(
     request.llmProvider,
     request.routerModel,
     request.message
   );
 
+  if (classificationUsage) {
+    allTokenUsage.push(classificationUsage);
+  }
+
   if (classification === "off-topic") {
     logger.info("Guard blocked (router)", { userId: request.userId });
-    return { reply: REFUSAL_MESSAGE, newMemories: [] };
+    return { reply: REFUSAL_MESSAGE, newMemories: [], tokenUsage: allTokenUsage };
   }
 
   // Media always uses smart model; otherwise pick based on complexity
@@ -75,18 +79,33 @@ export async function handleChat(request: AgentRequest): Promise<AgentResponse> 
 
     const reply = result.text;
 
+    // Track chat token usage
+    if (result.usage) {
+      allTokenUsage.push({
+        provider: request.llmProvider,
+        model: selectedModel,
+        inputTokens: result.usage.promptTokens,
+        outputTokens: result.usage.completionTokens,
+        purpose: "chat",
+      });
+    }
+
     // Extract memories using router (cheap) model
-    const newMemories = await extractMemories(
+    const { memories: newMemories, usage: memoryUsage } = await extractMemories(
       request.llmProvider,
       request.routerModel,
       request.message,
       reply
     ).catch((err) => {
       logger.warn("Memory extraction failed", { error: err });
-      return [] as ExtractedMemory[];
+      return { memories: [] as ExtractedMemory[], usage: undefined };
     });
 
-    return { reply, newMemories };
+    if (memoryUsage) {
+      allTokenUsage.push(memoryUsage);
+    }
+
+    return { reply, newMemories, tokenUsage: allTokenUsage };
   } catch (err) {
     logger.error("LLM call failed", { error: err, provider: request.llmProvider, model: selectedModel });
     throw err;
@@ -133,7 +152,7 @@ async function classifyMessage(
   provider: string,
   modelName: string,
   userMessage: string
-): Promise<Complexity | "off-topic"> {
+): Promise<{ result: Complexity | "off-topic"; usage?: TokenUsage }> {
   const providerConfig = getProviderConfig(provider);
 
   const body = {
@@ -170,18 +189,27 @@ Respond with ONLY one word: SIMPLE, COMPLEX, or OFF-TOPIC`,
 
     if (!response.ok) {
       logger.warn("Router classification failed", { status: response.status });
-      return "simple"; // Default to simple on failure
+      return { result: "simple" };
     }
 
     const data = (await response.json()) as any;
     const text = (data.choices?.[0]?.message?.content || "").trim().toUpperCase();
+    const usage: TokenUsage | undefined = data.usage ? {
+      provider,
+      model: modelName,
+      inputTokens: data.usage.prompt_tokens || 0,
+      outputTokens: data.usage.completion_tokens || 0,
+      purpose: "classification",
+    } : undefined;
 
-    if (text.includes("OFF-TOPIC") || text.includes("OFF_TOPIC")) return "off-topic";
-    if (text.includes("COMPLEX")) return "complex";
-    return "simple";
+    let result: Complexity | "off-topic" = "simple";
+    if (text.includes("OFF-TOPIC") || text.includes("OFF_TOPIC")) result = "off-topic";
+    else if (text.includes("COMPLEX")) result = "complex";
+
+    return { result, usage };
   } catch (err) {
     logger.warn("Router classification error", { error: err });
-    return "simple"; // Default to cheap model on error
+    return { result: "simple" };
   }
 }
 
@@ -190,7 +218,7 @@ async function extractMemories(
   modelName: string,
   userMessage: string,
   assistantReply: string
-): Promise<ExtractedMemory[]> {
+): Promise<{ memories: ExtractedMemory[]; usage?: TokenUsage }> {
   const providerConfig = getProviderConfig(provider);
 
   const body = {
@@ -234,11 +262,19 @@ Respond ONLY with the JSON array, no markdown, no explanation.`,
 
   if (!response.ok) {
     logger.warn("Memory extraction API call failed", { status: response.status });
-    return [];
+    return { memories: [] };
   }
 
   const data = (await response.json()) as any;
   const choice = data.choices?.[0]?.message;
+
+  const usage: TokenUsage | undefined = data.usage ? {
+    provider,
+    model: modelName,
+    inputTokens: data.usage.prompt_tokens || 0,
+    outputTokens: data.usage.completion_tokens || 0,
+    purpose: "memory_extraction",
+  } : undefined;
 
   let text = (choice?.content || "").trim();
   // Kimi fallback: check reasoning_content
@@ -246,7 +282,7 @@ Respond ONLY with the JSON array, no markdown, no explanation.`,
     text = extractJsonFromReasoning(choice.reasoning_content);
   }
 
-  if (!text || text === "[]") return [];
+  if (!text || text === "[]") return { memories: [], usage };
 
   // Strip markdown code blocks if present
   if (text.startsWith("```")) {
@@ -256,9 +292,10 @@ Respond ONLY with the JSON array, no markdown, no explanation.`,
   try {
     const parsed = JSON.parse(text);
     if (Array.isArray(parsed)) {
-      return parsed.filter(
+      const memories = parsed.filter(
         (m: any) => m.content && typeof m.content === "string" && m.category
       );
+      return { memories, usage };
     }
   } catch {
     logger.warn("Failed to parse memory extraction response", {
@@ -266,7 +303,7 @@ Respond ONLY with the JSON array, no markdown, no explanation.`,
     });
   }
 
-  return [];
+  return { memories: [], usage };
 }
 
 function extractJsonFromReasoning(reasoning: string): string {

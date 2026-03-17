@@ -1,8 +1,8 @@
 import { eq, desc, sql } from "drizzle-orm";
 import type { Database } from "../db/client.js";
-import { users, messages, memories } from "../db/schema.js";
+import { users, messages, memories, tokenUsage } from "../db/schema.js";
 import { ContainerManager } from "./containerManager.js";
-import type { AgentRequest, AgentResponse, ChatMessage, Memory, MediaAttachment } from "@piti/shared";
+import type { AgentRequest, AgentResponse, ChatMessage, Memory, MediaAttachment, TokenUsage } from "@piti/shared";
 import { createLogger } from "@piti/shared";
 
 const logger = createLogger("dispatcher");
@@ -90,6 +90,11 @@ export class Dispatcher {
     // 8. Save any new memories extracted by the agent
     if (response.newMemories?.length) {
       await this.saveMemories(user.id, response.newMemories);
+    }
+
+    // 9. Save token usage
+    if (response.tokenUsage?.length) {
+      await this.saveTokenUsage(user.id, response.tokenUsage);
     }
 
     return {
@@ -199,6 +204,28 @@ export class Dispatcher {
     );
 
     logger.info("Memories saved", { userId, count: newMemories.length });
+  }
+
+  private async saveTokenUsage(
+    userId: number,
+    usage: TokenUsage[]
+  ) {
+    if (usage.length === 0) return;
+
+    await this.db.insert(tokenUsage).values(
+      usage.map((u) => ({
+        userId,
+        provider: u.provider,
+        model: u.model,
+        inputTokens: u.inputTokens,
+        outputTokens: u.outputTokens,
+        purpose: u.purpose,
+      }))
+    );
+
+    const totalIn = usage.reduce((s, u) => s + u.inputTokens, 0);
+    const totalOut = usage.reduce((s, u) => s + u.outputTokens, 0);
+    logger.info("Token usage saved", { userId, calls: usage.length, totalIn, totalOut });
   }
 }
 
