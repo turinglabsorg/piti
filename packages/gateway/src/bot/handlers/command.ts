@@ -213,6 +213,17 @@ export function registerCommandHandlers(
     }
 
     try {
+      const lang = await getUserLang(db, telegramId);
+      const loadingMsgs: Record<string, string> = {
+        english: "Retrieving subscription status...",
+        italian: "Recupero stato abbonamento...",
+        spanish: "Recuperando estado de suscripción...",
+        french: "Récupération du statut d'abonnement...",
+        german: "Abonnementstatus wird abgerufen...",
+        portuguese: "Recuperando status da assinatura...",
+      };
+      await ctx.reply(loadingMsgs[lang] || loadingMsgs.english);
+
       const billingHeaders: Record<string, string> = {};
       if (opts.billingApiSecret) billingHeaders["x-api-secret"] = opts.billingApiSecret;
 
