@@ -218,12 +218,13 @@ export function registerCommandHandlers(
 
       // Check subscription status
       const subResp = await fetch(`${opts.billingUrl}/subscription/${telegramId}`, {
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(15000),
         headers: billingHeaders,
       });
 
       if (!subResp.ok) {
-        await ctx.reply("Could not load subscription info. Try again later.");
+        const errText = await subResp.text().catch(() => "");
+        await ctx.reply(`Could not load subscription info (${subResp.status}). Try again later.`);
         return;
       }
 
@@ -304,8 +305,8 @@ export function registerCommandHandlers(
           reply_markup: keyboard.length > 0 ? { inline_keyboard: keyboard } : undefined,
         } as any
       );
-    } catch {
-      await ctx.reply("Could not load subscription info. Try again later.");
+    } catch (err: any) {
+      await ctx.reply(`Could not load subscription info: ${err?.message || "unknown error"}`);
     }
   });
 
