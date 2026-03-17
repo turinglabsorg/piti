@@ -95,6 +95,7 @@ async function main() {
     allowedUsers: allowedUsersStr,
     mcpBridgeUrl: mcpBridgeUrl ? `http://localhost:${5100}` : undefined,
     billingUrl: config.billing?.enabled ? config.billing.url : undefined,
+    billingApiSecret: config.billing?.enabled ? config.billing.api_secret : undefined,
   });
 
   // Graceful shutdown

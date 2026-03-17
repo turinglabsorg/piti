@@ -12,6 +12,7 @@ export interface BotOptions {
   allowedUsers: string;
   mcpBridgeUrl?: string;
   billingUrl?: string;
+  billingApiSecret?: string;
 }
 
 export function createBot(token: string, db: Database, dispatcher: Dispatcher, opts: BotOptions): Telegraf<Context> {
@@ -43,6 +44,7 @@ export function createBot(token: string, db: Database, dispatcher: Dispatcher, o
   registerCommandHandlers(bot, db, {
     mcpBridgeUrl: opts.mcpBridgeUrl,
     billingUrl: opts.billingUrl,
+    billingApiSecret: opts.billingApiSecret,
   });
   registerMessageHandler(bot, dispatcher);
 

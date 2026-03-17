@@ -4,9 +4,19 @@ import type { Database } from "../../db/client.js";
 import { users, messages, memories, tokenUsage, mcpCalls } from "../../db/schema.js";
 import { LLM_PROVIDERS, LLM_MODELS } from "@piti/shared";
 
+const creditsTranslations: Record<string, Record<string, string>> = {
+  english: { title: "Your Credits", plan: "Plan", remaining: "Credits remaining", costs: "Credit costs", simple: "Simple question", detailed: "Detailed plan", vision: "Photo/video analysis", search: "Web search", credit: "credit", credits: "credits" },
+  italian: { title: "I tuoi Crediti", plan: "Piano", remaining: "Crediti rimanenti", costs: "Costi crediti", simple: "Domanda semplice", detailed: "Piano dettagliato", vision: "Analisi foto/video", search: "Ricerca web", credit: "credito", credits: "crediti" },
+  spanish: { title: "Tus Creditos", plan: "Plan", remaining: "Creditos restantes", costs: "Costos de creditos", simple: "Pregunta simple", detailed: "Plan detallado", vision: "Analisis foto/video", search: "Busqueda web", credit: "credito", credits: "creditos" },
+  french: { title: "Vos Credits", plan: "Forfait", remaining: "Credits restants", costs: "Couts des credits", simple: "Question simple", detailed: "Plan detaille", vision: "Analyse photo/video", search: "Recherche web", credit: "credit", credits: "credits" },
+  german: { title: "Deine Credits", plan: "Plan", remaining: "Verbleibende Credits", costs: "Credit-Kosten", simple: "Einfache Frage", detailed: "Detaillierter Plan", vision: "Foto/Video-Analyse", search: "Websuche", credit: "Credit", credits: "Credits" },
+  portuguese: { title: "Seus Creditos", plan: "Plano", remaining: "Creditos restantes", costs: "Custos de creditos", simple: "Pergunta simples", detailed: "Plano detalhado", vision: "Analise foto/video", search: "Pesquisa web", credit: "credito", credits: "creditos" },
+};
+
 export interface CommandHandlerOpts {
   mcpBridgeUrl?: string;
   billingUrl?: string;
+  billingApiSecret?: string;
 }
 
 export function registerCommandHandlers(
@@ -295,8 +305,14 @@ export function registerCommandHandlers(
     if (!telegramId) return;
 
     try {
+      const billingHeaders: Record<string, string> = {};
+      if (opts.billingApiSecret) {
+        billingHeaders["x-api-secret"] = opts.billingApiSecret;
+      }
+
       const resp = await fetch(`${opts.billingUrl}/balance/${telegramId}`, {
         signal: AbortSignal.timeout(5000),
+        headers: billingHeaders,
       });
 
       if (!resp.ok) {
@@ -306,20 +322,28 @@ export function registerCommandHandlers(
 
       const data = (await resp.json()) as { telegramId: number; credits: number; plan: string };
 
-      let msg = `<b>Your Credits</b>\n\n`;
-      msg += `Plan: <b>${data.plan}</b>\n`;
-      msg += `Credits remaining: <b>${data.credits}</b>\n\n`;
-      msg += `<b>Credit costs:</b>\n`;
-      msg += `• Simple question: 1 credit\n`;
-      msg += `• Detailed plan: 3 credits\n`;
-      msg += `• Photo/video analysis: 5 credits\n`;
-      msg += `• Web search: +1 credit\n`;
+      // Get user language
+      const userRow = await db
+        .select()
+        .from(users)
+        .where(eq(users.telegramId, telegramId))
+        .limit(1);
+      const lang = userRow.length > 0 ? userRow[0].language : "english";
+      const t = creditsTranslations[lang] || creditsTranslations.english;
+
+      let msg = `<b>${t.title}</b>\n\n`;
+      msg += `${t.plan}: <b>${data.plan}</b>\n`;
+      msg += `${t.remaining}: <b>${data.credits}</b>\n\n`;
+      msg += `<b>${t.costs}:</b>\n`;
+      msg += `• ${t.simple}: 1 ${t.credit}\n`;
+      msg += `• ${t.detailed}: 3 ${t.credits}\n`;
+      msg += `• ${t.vision}: 5 ${t.credits}\n`;
+      msg += `• ${t.search}: +1 ${t.credit}\n`;
 
       if (data.credits <= 10) {
-        // Generate checkout links
         const starterResp = await fetch(`${opts.billingUrl}/checkout`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...billingHeaders },
           body: JSON.stringify({ telegramId, plan: "starter" }),
           signal: AbortSignal.timeout(5000),
         }).catch(() => null);
