@@ -245,15 +245,34 @@ export class Dispatcher {
   ) {
     if (newMemories.length === 0) return;
 
+    // Deduplicate: check existing memories and skip similar ones
+    const existing = await this.db
+      .select({ content: memories.content })
+      .from(memories)
+      .where(eq(memories.userId, userId));
+
+    const existingSet = new Set(
+      existing.map((m) => m.content.toLowerCase().trim())
+    );
+
+    const unique = newMemories.filter(
+      (m) => !existingSet.has(m.content.toLowerCase().trim())
+    );
+
+    if (unique.length === 0) {
+      logger.info("No new unique memories to save", { userId });
+      return;
+    }
+
     await this.db.insert(memories).values(
-      newMemories.map((m) => ({
+      unique.map((m) => ({
         userId,
         content: m.content,
         category: m.category,
       }))
     );
 
-    logger.info("Memories saved", { userId, count: newMemories.length });
+    logger.info("Memories saved", { userId, count: unique.length, skipped: newMemories.length - unique.length });
   }
 
   private async saveTokenUsage(

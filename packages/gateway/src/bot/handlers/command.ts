@@ -60,9 +60,10 @@ export function registerCommandHandlers(
     await ctx.reply(
       "PITI Commands:\n\n" +
         "/language - Change language\n" +
-        "/credits - Check credit balance\n" +
-        "/memories - View what PITI remembers\n" +
         "/profile - View your fitness profile\n" +
+        "/subscription - Manage your plan\n" +
+        "/credits - Check credit balance\n" +
+        "/status - View agent status\n" +
         "/reset - Clear conversation history\n" +
         "/help - Show this message"
     );
@@ -71,28 +72,6 @@ export function registerCommandHandlers(
   // /language — flag picker
   bot.command("language", async (ctx: Context) => {
     await ctx.reply("Choose your language:", LANGUAGE_KEYBOARD as any);
-  });
-
-  // /memories
-  bot.command("memories", async (ctx: Context) => {
-    const telegramId = ctx.from?.id;
-    if (!telegramId) return;
-
-    const user = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
-    if (user.length === 0) {
-      await ctx.reply("Send me a message to get started!");
-      return;
-    }
-
-    const userMemories = await db.select().from(memories).where(eq(memories.userId, user[0].id)).limit(20);
-
-    if (userMemories.length === 0) {
-      await ctx.reply("No memories yet. Chat with me and I'll start remembering!");
-      return;
-    }
-
-    const memoryList = userMemories.map((m) => `- [${m.category}] ${m.content}`).join("\n");
-    await ctx.reply(`What I remember about you:\n\n${memoryList}`);
   });
 
   // /profile — show memories grouped as a profile summary
@@ -221,6 +200,81 @@ export function registerCommandHandlers(
     }
 
     await ctx.reply(msg, { parse_mode: "HTML" });
+  });
+
+  // /subscription — show plan or buy
+  bot.command("subscription", async (ctx: Context) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    if (!opts.billingUrl) {
+      await ctx.reply("Enjoy PITI for free! No subscription needed on this instance.");
+      return;
+    }
+
+    try {
+      const billingHeaders: Record<string, string> = {};
+      if (opts.billingApiSecret) billingHeaders["x-api-secret"] = opts.billingApiSecret;
+
+      const resp = await fetch(`${opts.billingUrl}/balance/${telegramId}`, {
+        signal: AbortSignal.timeout(5000),
+        headers: billingHeaders,
+      });
+
+      if (!resp.ok) {
+        await ctx.reply("Could not load subscription info. Try again later.");
+        return;
+      }
+
+      const data = (await resp.json()) as { telegramId: string; credits: number; plan: string };
+
+      if (data.plan === "starter" || data.plan === "pro") {
+        const planName = data.plan === "starter" ? "Starter ($9.99/month)" : "Pro ($24.99/month)";
+        await ctx.reply(
+          `<b>Active Plan: ${planName}</b>\n` +
+            `Credits remaining: <b>${data.credits}</b>\n\n` +
+            `Manage your subscription in Stripe's customer portal.`,
+          { parse_mode: "HTML" }
+        );
+        return;
+      }
+
+      // Free plan — show buy options
+      const keyboard = [];
+
+      const starterResp = await fetch(`${opts.billingUrl}/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...billingHeaders },
+        body: JSON.stringify({ telegramId, plan: "starter" }),
+        signal: AbortSignal.timeout(5000),
+      }).catch(() => null);
+
+      const proResp = await fetch(`${opts.billingUrl}/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...billingHeaders },
+        body: JSON.stringify({ telegramId, plan: "pro" }),
+        signal: AbortSignal.timeout(5000),
+      }).catch(() => null);
+
+      if (starterResp?.ok) {
+        const { url } = (await starterResp.json()) as { url: string };
+        keyboard.push([{ text: "Starter — 300 credits — $9.99/mo", url }]);
+      }
+      if (proResp?.ok) {
+        const { url } = (await proResp.json()) as { url: string };
+        keyboard.push([{ text: "Pro — 1000 credits — $24.99/mo", url }]);
+      }
+
+      await ctx.reply(
+        `<b>Free Plan</b>\nCredits remaining: <b>${data.credits}</b>\n\nUpgrade to get more credits:`,
+        {
+          parse_mode: "HTML",
+          reply_markup: keyboard.length > 0 ? { inline_keyboard: keyboard } : undefined,
+        } as any
+      );
+    } catch {
+      await ctx.reply("Could not load subscription info. Try again later.");
+    }
   });
 
   // /credits
