@@ -63,6 +63,7 @@ export function registerCommandHandlers(
         "/profile - View your fitness profile\n" +
         "/subscription - Manage your plan\n" +
         "/credits - Check credit balance\n" +
+        "/redeem - Redeem a coupon code\n" +
         "/status - View agent status\n" +
         "/reset - Clear conversation history\n" +
         "/help - Show this message"
@@ -494,4 +495,89 @@ export function registerCommandHandlers(
     await ctx.answerCbQuery(t.cancelled);
     await ctx.editMessageText(t.cancelled);
   });
+
+  // /redeem — redeem a coupon code
+  const redeemTranslations: Record<string, { prompt: string; success: string; invalid: string; exhausted: string; already: string; error: string }> = {
+    english: { prompt: "Enter your coupon code:", success: "Coupon redeemed! {credits} credits added. Total: {total}", invalid: "Invalid coupon code.", exhausted: "This coupon has been fully redeemed.", already: "You have already used this coupon.", error: "Could not redeem coupon. Try again later." },
+    italian: { prompt: "Inserisci il codice coupon:", success: "Coupon riscattato! {credits} crediti aggiunti. Totale: {total}", invalid: "Codice coupon non valido.", exhausted: "Questo coupon è stato completamente utilizzato.", already: "Hai già utilizzato questo coupon.", error: "Impossibile riscattare il coupon. Riprova più tardi." },
+    spanish: { prompt: "Ingresa tu código de cupón:", success: "Cupón canjeado! {credits} créditos añadidos. Total: {total}", invalid: "Código de cupón inválido.", exhausted: "Este cupón ya fue completamente canjeado.", already: "Ya has utilizado este cupón.", error: "No se pudo canjear el cupón. Inténtalo más tarde." },
+    french: { prompt: "Entrez votre code coupon :", success: "Coupon utilisé ! {credits} crédits ajoutés. Total : {total}", invalid: "Code coupon invalide.", exhausted: "Ce coupon a été entièrement utilisé.", already: "Vous avez déjà utilisé ce coupon.", error: "Impossible d'utiliser le coupon. Réessayez plus tard." },
+    german: { prompt: "Gib deinen Gutscheincode ein:", success: "Gutschein eingelöst! {credits} Credits hinzugefügt. Gesamt: {total}", invalid: "Ungültiger Gutscheincode.", exhausted: "Dieser Gutschein wurde vollständig eingelöst.", already: "Du hast diesen Gutschein bereits verwendet.", error: "Gutschein konnte nicht eingelöst werden. Versuche es später erneut." },
+    portuguese: { prompt: "Insira seu código de cupom:", success: "Cupom resgatado! {credits} créditos adicionados. Total: {total}", invalid: "Código de cupom inválido.", exhausted: "Este cupom já foi totalmente utilizado.", already: "Você já utilizou este cupom.", error: "Não foi possível resgatar o cupom. Tente novamente mais tarde." },
+  };
+
+  // Track users waiting to enter a coupon code
+  const pendingRedeem = new Set<number>();
+
+  bot.command("redeem", async (ctx: Context) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    if (!opts.billingUrl) {
+      await ctx.reply("Coupons are not available on this instance.");
+      return;
+    }
+
+    const text = (ctx.message as any)?.text || "";
+    const code = text.split(" ").slice(1).join("").trim().toUpperCase();
+    const lang = await getUserLang(db, telegramId);
+    const t = redeemTranslations[lang] || redeemTranslations.english;
+
+    if (!code) {
+      pendingRedeem.add(telegramId);
+      await ctx.reply(t.prompt);
+      return;
+    }
+
+    await redeemCode(ctx, telegramId, code, lang);
+  });
+
+  // Handle text messages that might be coupon codes
+  bot.on("text", async (ctx: any, next: () => Promise<void>) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId || !pendingRedeem.has(telegramId)) return next();
+
+    const code = ((ctx.message as any)?.text || "").trim().toUpperCase();
+    if (!code || code.startsWith("/")) {
+      pendingRedeem.delete(telegramId);
+      return next();
+    }
+
+    pendingRedeem.delete(telegramId);
+    const lang = await getUserLang(db, telegramId);
+    await redeemCode(ctx, telegramId, code, lang);
+  });
+
+  async function redeemCode(ctx: Context, telegramId: number, code: string, lang: string) {
+    const t = redeemTranslations[lang] || redeemTranslations.english;
+    const billingHeaders: Record<string, string> = {};
+    if (opts.billingApiSecret) billingHeaders["x-api-secret"] = opts.billingApiSecret;
+
+    try {
+      const resp = await fetch(`${opts.billingUrl}/coupons/redeem`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...billingHeaders },
+        body: JSON.stringify({ code, telegramId }),
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (!resp.ok) {
+        const data = (await resp.json().catch(() => null)) as { error?: string } | null;
+        const errorMap: Record<string, string> = {
+          invalid_code: t.invalid,
+          coupon_exhausted: t.exhausted,
+          already_redeemed: t.already,
+        };
+        await ctx.reply(errorMap[data?.error || ""] || t.error);
+        return;
+      }
+
+      const data = (await resp.json()) as { creditsAdded: number; totalCredits: number };
+      await ctx.reply(
+        t.success.replace("{credits}", String(data.creditsAdded)).replace("{total}", String(data.totalCredits))
+      );
+    } catch {
+      await ctx.reply(t.error);
+    }
+  }
 }
