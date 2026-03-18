@@ -27,6 +27,63 @@ const LANGUAGE_KEYBOARD = {
   },
 };
 
+const referralTranslations: Record<string, Record<string, string>> = {
+  english: {
+    title: "Invite Friends & Earn Credits",
+    share: "Share this link with friends:",
+    howItWorks: "When someone joins using your link, you both get <b>+15 credits</b>!\nIf they subscribe, you get an extra <b>+50 credits</b>!",
+    stats: "Your referrals: <b>{count}</b> | Credits earned: <b>{earned}</b>",
+    signupBonusReferred: "You got +{credits} bonus credits from a referral! Welcome to PITI!",
+    signupBonusReferrer: "<b>Someone joined with your link!</b>\n\nYou earned <b>+{credits} credits</b> as a referral reward!",
+    error: "Could not load referral info. Try again later.",
+  },
+  italian: {
+    title: "Invita Amici e Guadagna Crediti",
+    share: "Condividi questo link con i tuoi amici:",
+    howItWorks: "Quando qualcuno si unisce con il tuo link, entrambi ricevete <b>+15 crediti</b>!\nSe si abbona, ricevi <b>+50 crediti</b> extra!",
+    stats: "I tuoi referral: <b>{count}</b> | Crediti guadagnati: <b>{earned}</b>",
+    signupBonusReferred: "Hai ricevuto +{credits} crediti bonus da un referral! Benvenuto su PITI!",
+    signupBonusReferrer: "<b>Qualcuno si e' unito con il tuo link!</b>\n\nHai guadagnato <b>+{credits} crediti</b> come premio referral!",
+    error: "Impossibile caricare le info referral. Riprova piu' tardi.",
+  },
+  spanish: {
+    title: "Invita Amigos y Gana Creditos",
+    share: "Comparte este enlace con tus amigos:",
+    howItWorks: "Cuando alguien se une con tu enlace, ambos reciben <b>+15 creditos</b>!\nSi se suscribe, ganas <b>+50 creditos</b> extra!",
+    stats: "Tus referidos: <b>{count}</b> | Creditos ganados: <b>{earned}</b>",
+    signupBonusReferred: "Recibiste +{credits} creditos de bonus por referido! Bienvenido a PITI!",
+    signupBonusReferrer: "<b>Alguien se unio con tu enlace!</b>\n\nGanaste <b>+{credits} creditos</b> como recompensa de referido!",
+    error: "No se pudo cargar la info de referidos. Intentalo mas tarde.",
+  },
+  french: {
+    title: "Invitez des Amis et Gagnez des Credits",
+    share: "Partagez ce lien avec vos amis :",
+    howItWorks: "Quand quelqu'un rejoint avec votre lien, vous recevez tous les deux <b>+15 credits</b> !\nS'il s'abonne, vous gagnez <b>+50 credits</b> en plus !",
+    stats: "Vos parrainages : <b>{count}</b> | Credits gagnes : <b>{earned}</b>",
+    signupBonusReferred: "Vous avez recu +{credits} credits bonus grace a un parrainage ! Bienvenue sur PITI !",
+    signupBonusReferrer: "<b>Quelqu'un a rejoint avec votre lien !</b>\n\nVous avez gagne <b>+{credits} credits</b> en recompense de parrainage !",
+    error: "Impossible de charger les infos de parrainage. Reessayez plus tard.",
+  },
+  german: {
+    title: "Freunde einladen & Credits verdienen",
+    share: "Teile diesen Link mit Freunden:",
+    howItWorks: "Wenn jemand deinem Link folgt, bekommt ihr beide <b>+15 Credits</b>!\nWenn sie abonnieren, bekommst du <b>+50 Credits</b> extra!",
+    stats: "Deine Empfehlungen: <b>{count}</b> | Credits verdient: <b>{earned}</b>",
+    signupBonusReferred: "Du hast +{credits} Bonus-Credits durch eine Empfehlung erhalten! Willkommen bei PITI!",
+    signupBonusReferrer: "<b>Jemand ist deinem Link gefolgt!</b>\n\nDu hast <b>+{credits} Credits</b> als Empfehlungsbelohnung verdient!",
+    error: "Empfehlungsinfos konnten nicht geladen werden. Versuche es spaeter erneut.",
+  },
+  portuguese: {
+    title: "Convide Amigos e Ganhe Creditos",
+    share: "Compartilhe este link com amigos:",
+    howItWorks: "Quando alguem entra pelo seu link, ambos recebem <b>+15 creditos</b>!\nSe assinar, voce ganha <b>+50 creditos</b> extras!",
+    stats: "Suas indicacoes: <b>{count}</b> | Creditos ganhos: <b>{earned}</b>",
+    signupBonusReferred: "Voce ganhou +{credits} creditos de bonus por indicacao! Bem-vindo ao PITI!",
+    signupBonusReferrer: "<b>Alguem entrou pelo seu link!</b>\n\nVoce ganhou <b>+{credits} creditos</b> como recompensa de indicacao!",
+    error: "Nao foi possivel carregar as infos de indicacao. Tente novamente mais tarde.",
+  },
+};
+
 export interface CommandHandlerOpts {
   mcpBridgeUrl?: string;
   billingUrl?: string;
@@ -52,10 +109,63 @@ export function registerCommandHandlers(
   db: Database,
   opts: CommandHandlerOpts = {}
 ) {
-  // /start — welcome + language picker
+  // /start — welcome + language picker + referral deep link
   bot.command("start", async (ctx: Context) => {
     const telegramId = ctx.from?.id;
     if (!telegramId) return;
+
+    // Parse deep link payload: /start ref_X7K9M2
+    const text = (ctx.message as any)?.text || "";
+    const payload = text.split(" ").slice(1).join("").trim();
+    const referralMatch = payload.match(/^ref_([A-Z0-9]{6,8})$/i);
+
+    if (referralMatch && opts.billingUrl && opts.billingApiSecret) {
+      const referralCode = referralMatch[1].toUpperCase();
+      // Store for after user creation — apply referral asynchronously
+      setTimeout(async () => {
+        try {
+          const billingHeaders: Record<string, string> = {
+            "Content-Type": "application/json",
+            "x-api-secret": opts.billingApiSecret!,
+          };
+          const resp = await fetch(`${opts.billingUrl}/referral/apply-signup`, {
+            method: "POST",
+            headers: billingHeaders,
+            body: JSON.stringify({ referredTelegramId: telegramId, referralCode }),
+            signal: AbortSignal.timeout(30000),
+          });
+
+          if (resp.ok) {
+            const data = (await resp.json()) as { referrerTelegramId?: string; creditsAdded?: number };
+            const lang = await getUserLang(db, telegramId).catch(() => "english");
+            const t = referralTranslations[lang] || referralTranslations.english;
+
+            // Notify the referred user
+            await ctx.reply(t.signupBonusReferred.replace("{credits}", String(data.creditsAdded || 15)));
+
+            // Notify the referrer via Telegram API
+            if (data.referrerTelegramId) {
+              const referrerLang = await getUserLang(db, parseInt(data.referrerTelegramId)).catch(() => "english");
+              const rt = referralTranslations[referrerLang] || referralTranslations.english;
+              const botToken = process.env.TELEGRAM_BOT_TOKEN || "";
+              if (botToken) {
+                await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    chat_id: data.referrerTelegramId,
+                    text: rt.signupBonusReferrer.replace("{credits}", String(data.creditsAdded || 15)),
+                    parse_mode: "HTML",
+                  }),
+                }).catch(() => {});
+              }
+            }
+          }
+        } catch {
+          // Referral failure should not block onboarding
+        }
+      }, 2000); // Delay to allow user creation via /balance first
+    }
 
     await ctx.reply(
       "Welcome to PITI! Your AI fitness & nutrition buddy.\n\n" +
@@ -72,6 +182,7 @@ export function registerCommandHandlers(
         "/profile - View your fitness profile\n" +
         "/subscription - Manage your plan\n" +
         "/credits - Check credit balance\n" +
+        "/referral - Invite friends & earn credits\n" +
         "/redeem - Redeem a coupon code\n" +
         "/status - View agent status\n" +
         "/reset - Clear conversation history\n" +
@@ -82,6 +193,57 @@ export function registerCommandHandlers(
   // /language — flag picker
   bot.command("language", async (ctx: Context) => {
     await ctx.reply("Choose your language:", LANGUAGE_KEYBOARD as any);
+  });
+
+  // /referral — show referral link and stats
+  bot.command("referral", async (ctx: Context) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    if (!opts.billingUrl) {
+      await ctx.reply("Referrals are not available on this instance.");
+      return;
+    }
+
+    const lang = await getUserLang(db, telegramId);
+    const t = referralTranslations[lang] || referralTranslations.english;
+
+    try {
+      const billingHeaders: Record<string, string> = {};
+      if (opts.billingApiSecret) billingHeaders["x-api-secret"] = opts.billingApiSecret;
+
+      const [codeResp, statsResp] = await Promise.all([
+        fetch(`${opts.billingUrl}/referral/code/${telegramId}`, {
+          signal: AbortSignal.timeout(30000),
+          headers: billingHeaders,
+        }),
+        fetch(`${opts.billingUrl}/referral/stats/${telegramId}`, {
+          signal: AbortSignal.timeout(30000),
+          headers: billingHeaders,
+        }),
+      ]);
+
+      if (!codeResp.ok || !statsResp.ok) {
+        await ctx.reply(t.error);
+        return;
+      }
+
+      const { referralCode } = (await codeResp.json()) as { referralCode: string };
+      const stats = (await statsResp.json()) as { referralCount: number; referralCreditsEarned: number };
+
+      const link = `https://t.me/piti_ai_bot?start=ref_${referralCode}`;
+
+      let msg = `<b>${t.title}</b>\n\n`;
+      msg += `${t.share}\n<code>${link}</code>\n\n`;
+      msg += `${t.howItWorks}\n\n`;
+      msg += t.stats
+        .replace("{count}", String(stats.referralCount))
+        .replace("{earned}", String(stats.referralCreditsEarned));
+
+      await ctx.reply(msg, { parse_mode: "HTML" });
+    } catch {
+      await ctx.reply(t.error);
+    }
   });
 
   // /profile — show memories grouped as a profile summary
@@ -267,7 +429,7 @@ export function registerCommandHandlers(
       };
 
       if (sub.active) {
-        const planName = sub.plan === "starter" ? "Starter ($9.99/month)" : "Pro ($24.99/month)";
+        const planName = sub.plan === "starter" ? "Starter ($9.80/month)" : "Pro ($27.24/month)";
         const end = sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : "—";
 
         let msg = "";
@@ -303,7 +465,7 @@ export function registerCommandHandlers(
 
         // Always show change plan options
         const otherPlan = sub.plan === "starter" ? "pro" : "starter";
-        const otherLabel = otherPlan === "pro" ? "Upgrade to Pro ($24.99/mo)" : "Downgrade to Starter ($9.99/mo)";
+        const otherLabel = otherPlan === "pro" ? "Upgrade to Pro ($27.24/mo)" : "Downgrade to Starter ($9.80/mo)";
         const changeResp = await fetch(`${opts.billingUrl}/checkout`, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...billingHeaders },
@@ -342,11 +504,11 @@ export function registerCommandHandlers(
 
       if (starterResp?.ok) {
         const { url } = (await starterResp.json()) as { url: string };
-        keyboard.push([{ text: "Starter — 300 credits — $9.99/mo", url }]);
+        keyboard.push([{ text: "Starter — 300 credits — $9.80/mo", url }]);
       }
       if (proResp?.ok) {
         const { url } = (await proResp.json()) as { url: string };
-        keyboard.push([{ text: "Pro — 1000 credits — $24.99/mo", url }]);
+        keyboard.push([{ text: "Pro — 1000 credits — $27.24/mo", url }]);
       }
 
       await ctx.reply(
@@ -439,7 +601,7 @@ export function registerCommandHandlers(
 
         if (starterResp?.ok) {
           const { url } = (await starterResp.json()) as { url: string };
-          msg += `\n<a href="${escapeHtml(url)}">Buy Starter (300 credits) - $9.99/month</a>`;
+          msg += `\n<a href="${escapeHtml(url)}">Buy Starter (300 credits) - $9.80/month</a>`;
         }
       }
 

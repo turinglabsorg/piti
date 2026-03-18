@@ -122,6 +122,75 @@ export class BillingClient {
   }
 
   /**
+   * Apply a signup referral bonus.
+   * Returns the referrer's telegramId on success, or null on failure.
+   */
+  async applySignupReferral(
+    referredTelegramId: number,
+    referralCode: string
+  ): Promise<{ success: boolean; referrerTelegramId?: string; creditsAdded?: number; error?: string } | null> {
+    try {
+      const resp = await fetch(`${this.config.url}/referral/apply-signup`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-secret": this.config.apiSecret,
+        },
+        body: JSON.stringify({ referredTelegramId, referralCode }),
+        signal: AbortSignal.timeout(30000),
+      });
+
+      const data = await resp.json() as any;
+      if (!resp.ok) {
+        return { success: false, error: data?.error };
+      }
+      return data;
+    } catch (err) {
+      logger.warn("Referral apply failed", { error: err });
+      return null;
+    }
+  }
+
+  /**
+   * Get a user's referral code.
+   */
+  async getReferralCode(telegramId: number): Promise<string | null> {
+    try {
+      const resp = await fetch(`${this.config.url}/referral/code/${telegramId}`, {
+        signal: AbortSignal.timeout(30000),
+        headers: { "x-api-secret": this.config.apiSecret },
+      });
+      if (!resp.ok) return null;
+      const data = (await resp.json()) as { referralCode: string };
+      return data.referralCode;
+    } catch (err) {
+      logger.warn("Referral code fetch failed", { error: err });
+      return null;
+    }
+  }
+
+  /**
+   * Get a user's referral stats.
+   */
+  async getReferralStats(telegramId: number): Promise<{
+    referralCode: string;
+    referralCount: number;
+    referralCreditsEarned: number;
+  } | null> {
+    try {
+      const resp = await fetch(`${this.config.url}/referral/stats/${telegramId}`, {
+        signal: AbortSignal.timeout(30000),
+        headers: { "x-api-secret": this.config.apiSecret },
+      });
+      if (!resp.ok) return null;
+      return (await resp.json()) as any;
+    } catch (err) {
+      logger.warn("Referral stats fetch failed", { error: err });
+      return null;
+    }
+  }
+
+  /**
    * Get a Stripe checkout URL for the user.
    */
   async getCheckoutUrl(telegramId: number, plan: "starter" | "pro"): Promise<string | null> {
