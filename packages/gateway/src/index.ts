@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
+import { randomUUID } from "crypto";
 import { parse as parseYaml } from "yaml";
 import Redis from "ioredis";
 import type { GatewayConfig } from "@piti/shared";
@@ -60,12 +61,16 @@ async function main() {
     agentEnvVars.MCP_BRIDGE_URL = mcpBridgeUrl;
   }
 
+  // Generate a shared secret for gateway ↔ agent authentication
+  const agentSecret = randomUUID();
+
   // Start container manager
   const containerManager = new ContainerManager(redis, {
     imageName: config.docker.agent_image,
     portStart: config.docker.port_range[0],
     portEnd: config.docker.port_range[1],
     idleTimeoutMs: config.docker.idle_timeout_ms,
+    agentSecret,
   });
   await containerManager.start();
 
@@ -119,6 +124,7 @@ async function main() {
     await startApiServer(
       {
         port: config.api.port,
+        apiKey: config.api.api_key,
         userMap: config.api.user_map,
       },
       db,

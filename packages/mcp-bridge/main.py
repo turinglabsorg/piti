@@ -97,10 +97,22 @@ def load_mcp_config() -> list[dict]:
     return result
 
 
+ALLOWED_PACKAGES = {
+    "duckduckgo-mcp-server",
+}
+
+
 def install_packages(configs: list[dict]):
     packages = [c["package"] for c in configs if c.get("package")]
     if not packages:
         return
+    # Validate packages against allowlist to prevent arbitrary code execution
+    for pkg in packages:
+        if pkg not in ALLOWED_PACKAGES:
+            raise ValueError(
+                f"Package '{pkg}' not in allowlist. "
+                f"Add it to ALLOWED_PACKAGES in main.py to permit installation."
+            )
     logger.info(f"Installing MCP packages: {packages}")
     subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet"] + packages)
     logger.info("Packages installed")

@@ -19,6 +19,23 @@ export function createServer() {
     return mcpResult;
   }
 
+  // Authentication middleware — verify shared secret from gateway
+  const agentSecret = process.env.AGENT_SECRET;
+  if (agentSecret) {
+    app.addHook("onRequest", async (request, reply) => {
+      if (request.url === "/health") return;
+
+      const authHeader = request.headers.authorization;
+      if (!authHeader || authHeader !== `Bearer ${agentSecret}`) {
+        reply.status(401).send({ error: "Unauthorized" });
+        return;
+      }
+    });
+    logger.info("Agent authentication enabled");
+  } else {
+    logger.warn("Agent running without authentication (AGENT_SECRET not set)");
+  }
+
   app.get("/health", async () => {
     return { status: "ok" };
   });

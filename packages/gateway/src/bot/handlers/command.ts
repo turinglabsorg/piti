@@ -33,6 +33,15 @@ export interface CommandHandlerOpts {
   billingApiSecret?: string;
 }
 
+/** Escape HTML special characters to prevent injection in Telegram HTML messages */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 async function getUserLang(db: Database, telegramId: number): Promise<string> {
   const row = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
   return row.length > 0 ? row[0].language : "english";
@@ -118,13 +127,13 @@ export function registerCommandHandlers(
     };
 
     let msg = `<b>Your Profile</b>\n`;
-    msg += `Language: ${user[0].language}\n\n`;
+    msg += `Language: ${escapeHtml(user[0].language)}\n\n`;
 
     for (const [cat, items] of Object.entries(groups)) {
-      const label = categoryLabels[cat] || cat;
-      msg += `<b>${label}:</b>\n`;
+      const label = categoryLabels[cat] || escapeHtml(cat);
+      msg += `<b>${escapeHtml(label)}:</b>\n`;
       for (const item of items) {
-        msg += `- ${item}\n`;
+        msg += `- ${escapeHtml(item)}\n`;
       }
       msg += `\n`;
     }
@@ -161,7 +170,7 @@ export function registerCommandHandlers(
         if (resp.ok) {
           const data = (await resp.json()) as { tools: { name: string }[] };
           mcpInfo = data.tools.length > 0
-            ? data.tools.map((t) => `- ${t.name}`).join("\n")
+            ? data.tools.map((t) => `- ${escapeHtml(t.name)}`).join("\n")
             : "Bridge running, no tools loaded";
         }
       } catch {
@@ -180,14 +189,14 @@ export function registerCommandHandlers(
       .groupBy(mcpCalls.server, mcpCalls.tool);
 
     let msg = `<b>PITI Status</b>\n\n`;
-    msg += `<b>Language:</b> ${user[0].language}\n\n`;
+    msg += `<b>Language:</b> ${escapeHtml(user[0].language)}\n\n`;
 
     msg += `<b>Token Usage:</b>\n`;
     if (usageStats.length === 0) {
       msg += `No usage yet\n`;
     } else {
       for (const s of usageStats) {
-        msg += `- ${s.model}: ${s.calls} calls\n`;
+        msg += `- ${escapeHtml(s.model)}: ${s.calls} calls\n`;
       }
     }
 
@@ -196,7 +205,7 @@ export function registerCommandHandlers(
     if (mcpStats.length > 0) {
       msg += `\n\n<b>MCP Usage:</b>\n`;
       for (const s of mcpStats) {
-        msg += `- ${s.server}/${s.tool}: ${s.calls} calls, avg ${s.avgMs}ms\n`;
+        msg += `- ${escapeHtml(s.server)}/${escapeHtml(s.tool)}: ${s.calls} calls, avg ${s.avgMs}ms\n`;
       }
     }
 
@@ -235,7 +244,6 @@ export function registerCommandHandlers(
       });
 
       if (!subResp.ok) {
-        const errText = await subResp.text().catch(() => "");
         const subErrorMsgs: Record<string, string> = {
           english: "Could not load subscription info. Try again later.",
           italian: "Impossibile caricare le info sull'abbonamento. Riprova più tardi.",
@@ -264,14 +272,14 @@ export function registerCommandHandlers(
 
         let msg = "";
         if (sub.cancelAtPeriodEnd) {
-          msg += `<b>Plan: ${planName} (cancelling)</b>\n\n`;
+          msg += `<b>Plan: ${escapeHtml(planName)} (cancelling)</b>\n\n`;
           msg += `Credits: <b>${sub.credits}</b>\n`;
-          msg += `Active until: ${end}\n`;
+          msg += `Active until: ${escapeHtml(end)}\n`;
           msg += `\nYour subscription will not renew. You can keep using your remaining credits until the end of the period.`;
         } else {
-          msg += `<b>Plan: ${planName}</b>\n\n`;
+          msg += `<b>Plan: ${escapeHtml(planName)}</b>\n\n`;
           msg += `Credits: <b>${sub.credits}</b>\n`;
-          msg += `Renews: ${end}\n`;
+          msg += `Renews: ${escapeHtml(end)}\n`;
         }
 
         const keyboard = [];
@@ -413,7 +421,7 @@ export function registerCommandHandlers(
       const t = creditsTranslations[lang] || creditsTranslations.english;
 
       let msg = `<b>${t.title}</b>\n\n`;
-      msg += `${t.plan}: <b>${data.plan}</b>\n`;
+      msg += `${t.plan}: <b>${escapeHtml(data.plan)}</b>\n`;
       msg += `${t.remaining}: <b>${data.credits}</b>\n\n`;
       msg += `<b>${t.costs}:</b>\n`;
       msg += `- ${t.simple}: 1 ${t.credit}\n`;
@@ -431,7 +439,7 @@ export function registerCommandHandlers(
 
         if (starterResp?.ok) {
           const { url } = (await starterResp.json()) as { url: string };
-          msg += `\n<a href="${url}">Buy Starter (300 credits) - $9.99/month</a>`;
+          msg += `\n<a href="${escapeHtml(url)}">Buy Starter (300 credits) - $9.99/month</a>`;
         }
       }
 
@@ -506,8 +514,9 @@ export function registerCommandHandlers(
     portuguese: { prompt: "Insira seu código de cupom:", success: "Cupom resgatado! {credits} créditos adicionados. Total: {total}", invalid: "Código de cupom inválido.", exhausted: "Este cupom já foi totalmente utilizado.", already: "Você já utilizou este cupom.", error: "Não foi possível resgatar o cupom. Tente novamente mais tarde." },
   };
 
-  // Track users waiting to enter a coupon code
-  const pendingRedeem = new Set<number>();
+  // Track users waiting to enter a coupon code (with timestamp for TTL)
+  const pendingRedeem = new Map<number, number>();
+  const PENDING_REDEEM_TTL_MS = 60_000;
 
   bot.command("redeem", async (ctx: Context) => {
     const telegramId = ctx.from?.id;
@@ -524,7 +533,7 @@ export function registerCommandHandlers(
     const t = redeemTranslations[lang] || redeemTranslations.english;
 
     if (!code) {
-      pendingRedeem.add(telegramId);
+      pendingRedeem.set(telegramId, Date.now());
       await ctx.reply(t.prompt);
       return;
     }
@@ -535,7 +544,16 @@ export function registerCommandHandlers(
   // Handle text messages that might be coupon codes
   bot.on("text", async (ctx: any, next: () => Promise<void>) => {
     const telegramId = ctx.from?.id;
-    if (!telegramId || !pendingRedeem.has(telegramId)) return next();
+    if (!telegramId) return next();
+
+    const timestamp = pendingRedeem.get(telegramId);
+    if (!timestamp) return next();
+
+    // Check TTL
+    if (Date.now() - timestamp > PENDING_REDEEM_TTL_MS) {
+      pendingRedeem.delete(telegramId);
+      return next();
+    }
 
     const code = ((ctx.message as any)?.text || "").trim().toUpperCase();
     if (!code || code.startsWith("/")) {

@@ -39,7 +39,9 @@ export class BillingClient {
 
   /**
    * Check if user has enough credits for at least a simple message.
-   * Returns the balance, or null if billing is unreachable (fail-open).
+   * Returns the balance, or null if billing is unreachable.
+   * SECURITY NOTE: fail-open by design — if billing is down, users are not blocked.
+   * Monitor logs for "failOpen: true" entries to detect abuse.
    */
   async checkBalance(telegramId: number): Promise<BalanceResponse | null> {
     try {
@@ -48,13 +50,13 @@ export class BillingClient {
         headers: { "x-api-secret": this.config.apiSecret },
       });
       if (!resp.ok) {
-        logger.warn("Billing balance check failed", { status: resp.status, telegramId });
-        return null; // Fail open
+        logger.error("Billing balance check failed", { status: resp.status, telegramId, failOpen: true });
+        return null;
       }
       return (await resp.json()) as BalanceResponse;
     } catch (err) {
-      logger.warn("Billing service unreachable", { error: err });
-      return null; // Fail open — don't block users if billing is down
+      logger.error("Billing service unreachable, allowing request", { error: err, failOpen: true });
+      return null;
     }
   }
 
@@ -106,7 +108,7 @@ export class BillingClient {
         if (data?.error === "insufficient_credits") {
           return data as DeductErrorResponse;
         }
-        logger.warn("Billing deduct failed", { status: resp.status, telegramId });
+        logger.error("Billing deduct failed", { status: resp.status, telegramId, failOpen: true });
         return null;
       }
 
@@ -126,7 +128,10 @@ export class BillingClient {
     try {
       const resp = await fetch(`${this.config.url}/checkout`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-secret": this.config.apiSecret,
+        },
         body: JSON.stringify({ telegramId, plan }),
         signal: AbortSignal.timeout(30000),
       });

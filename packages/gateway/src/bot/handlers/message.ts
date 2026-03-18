@@ -1,18 +1,23 @@
 import type { Context } from "telegraf";
 import type { Dispatcher } from "../../orchestrator/dispatcher.js";
 import type { MediaAttachment } from "@piti/shared";
-import { createLogger } from "@piti/shared";
+import { createLogger, SUPPORTED_LANGUAGES_SET } from "@piti/shared";
 
 const logger = createLogger("message-handler");
 
 
 export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
-  // Handle language selection callback
+  // Handle language selection callback — validate against whitelist
   bot.action(/^setlang_(.+)$/, async (ctx: any) => {
     const telegramId = ctx.from?.id;
     if (!telegramId) return;
 
     const language = ctx.match[1];
+    if (!SUPPORTED_LANGUAGES_SET.has(language)) {
+      logger.warn("Invalid language callback", { telegramId, language });
+      await ctx.answerCbQuery("Invalid language");
+      return;
+    }
     await dispatcher.setUserLanguage(telegramId, language);
 
     const langNames: Record<string, string> = {

@@ -3,7 +3,7 @@ import type { Database } from "../db/client.js";
 import { users, messages, memories, tokenUsage, mcpCalls } from "../db/schema.js";
 import { ContainerManager } from "./containerManager.js";
 import type { AgentRequest, AgentResponse, ChatMessage, Memory, MediaAttachment, TokenUsage, McpCall } from "@piti/shared";
-import { createLogger } from "@piti/shared";
+import { createLogger, SUPPORTED_LANGUAGES_SET } from "@piti/shared";
 import type { BillingClient } from "../billing/client.js";
 
 const logger = createLogger("dispatcher");
@@ -91,6 +91,9 @@ export class Dispatcher {
     // 6. Check billing (if enabled)
     if (this.billing) {
       const balance = await this.billing.checkBalance(telegramId);
+      if (!balance) {
+        logger.warn("Billing unreachable, allowing request (fail-open)", { telegramId });
+      }
       if (balance && balance.credits <= 0) {
         const checkoutUrl = await this.billing.getCheckoutUrl(telegramId, "starter");
         const buyMsg = checkoutUrl
@@ -155,6 +158,10 @@ export class Dispatcher {
   }
 
   async setUserLanguage(telegramId: number, language: string) {
+    if (!SUPPORTED_LANGUAGES_SET.has(language)) {
+      logger.warn("Rejected invalid language", { telegramId, language });
+      return;
+    }
     await this.db
       .update(users)
       .set({ language })

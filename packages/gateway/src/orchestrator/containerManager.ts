@@ -20,6 +20,7 @@ export class ContainerManager {
   private portStart: number;
   private portEnd: number;
   private idleTimeoutMs: number;
+  private agentSecret: string;
   private cleanupInterval: NodeJS.Timeout | null = null;
 
   constructor(
@@ -29,14 +30,23 @@ export class ContainerManager {
       portStart: number;
       portEnd: number;
       idleTimeoutMs: number;
+      agentSecret: string;
     }
   ) {
-    this.docker = new Docker({ socketPath: "/var/run/docker.sock" });
+    // Support Docker socket proxy via DOCKER_HOST env var
+    const dockerHost = process.env.DOCKER_HOST;
+    if (dockerHost && dockerHost.startsWith("tcp://")) {
+      const url = new URL(dockerHost);
+      this.docker = new Docker({ host: url.hostname, port: Number(url.port) });
+    } else {
+      this.docker = new Docker({ socketPath: "/var/run/docker.sock" });
+    }
     this.redis = redis;
     this.imageName = opts.imageName;
     this.portStart = opts.portStart;
     this.portEnd = opts.portEnd;
     this.idleTimeoutMs = opts.idleTimeoutMs;
+    this.agentSecret = opts.agentSecret;
   }
 
   async start() {
@@ -89,7 +99,7 @@ export class ContainerManager {
       }
     }
 
-    // Allocate a port
+    // Allocate a port atomically
     const port = await this.allocatePort();
     if (!port) {
       throw new Error("No available ports for new container");
@@ -108,6 +118,7 @@ export class ContainerManager {
 
     const envArray = Object.entries(envVars).map(([k, v]) => `${k}=${v}`);
     envArray.push(`PORT=${port}`);
+    envArray.push(`AGENT_SECRET=${this.agentSecret}`);
 
     const container = await this.docker.createContainer({
       Image: this.imageName,
@@ -136,12 +147,12 @@ export class ContainerManager {
     if (!healthy) {
       await container.stop().catch(() => {});
       await container.remove({ force: true }).catch(() => {});
+      await this.redis.srem("piti:ports", port.toString());
       throw new Error(`Container for user ${userId} failed health check`);
     }
 
     info.status = "ready";
     await this.redis.set(key, JSON.stringify(info));
-    await this.redis.sadd("piti:ports", port.toString());
 
     logger.info("Container created", { userId, containerId: container.id, port });
     return info;
@@ -159,7 +170,10 @@ export class ContainerManager {
 
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${this.agentSecret}`,
+      },
       body: JSON.stringify(request),
       signal: AbortSignal.timeout(120_000),
     });
@@ -212,16 +226,24 @@ export class ContainerManager {
     }
   }
 
+  /**
+   * Atomically allocate a port using a Redis Lua script.
+   * This prevents race conditions when multiple requests try to allocate simultaneously.
+   */
   private async allocatePort(): Promise<number | null> {
-    const usedPorts = await this.redis.smembers("piti:ports");
-    const used = new Set(usedPorts.map(Number));
-
-    for (let port = this.portStart; port <= this.portEnd; port++) {
-      if (!used.has(port)) {
-        return port;
-      }
-    }
-    return null;
+    const script = `
+      for port = tonumber(ARGV[1]), tonumber(ARGV[2]) do
+        if redis.call("SADD", KEYS[1], port) == 1 then
+          return port
+        end
+      end
+      return nil
+    `;
+    const result = await this.redis.eval(
+      script, 1, "piti:ports",
+      this.portStart.toString(), this.portEnd.toString()
+    );
+    return result ? Number(result) : null;
   }
 
   private async waitForHealth(

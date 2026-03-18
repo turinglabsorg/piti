@@ -160,6 +160,9 @@ async function classifyMessage(
 ): Promise<{ result: Complexity | "off-topic"; usage?: TokenUsage }> {
   const providerConfig = getProviderConfig(provider);
 
+  // Sanitize user message to prevent prompt injection via closing delimiters
+  const sanitizedMessage = userMessage.replace(/<\/user_message>/gi, "");
+
   const body = {
     model: modelName,
     messages: [
@@ -174,7 +177,9 @@ Categories:
 
 IMPORTANT: If in doubt, classify as SIMPLE. Only classify as OFF-TOPIC if the message is CLEARLY unrelated to health, fitness, or nutrition. Messages in any language should be classified the same way.
 
-User message: "${userMessage}"
+<user_message>
+${sanitizedMessage}
+</user_message>
 
 Respond with ONLY one word: SIMPLE, COMPLEX, or OFF-TOPIC`,
       },
@@ -228,6 +233,10 @@ async function extractMemories(
 ): Promise<{ memories: ExtractedMemory[]; usage?: TokenUsage }> {
   const providerConfig = getProviderConfig(provider);
 
+  // Sanitize to prevent prompt injection via closing delimiters
+  const sanitizedUserMsg = userMessage.replace(/<\/user_message>/gi, "");
+  const sanitizedReply = assistantReply.slice(0, 500).replace(/<\/assistant_message>/gi, "");
+
   const body = {
     model: modelName,
     messages: [
@@ -244,11 +253,13 @@ Only extract concrete, specific facts. Do NOT extract:
 
 If there's nothing worth remembering, return: []
 
----
-User said: "${userMessage}"
+<user_message>
+${sanitizedUserMsg}
+</user_message>
 
-Assistant replied: "${assistantReply.slice(0, 500)}"
----
+<assistant_message>
+${sanitizedReply}
+</assistant_message>
 
 Respond ONLY with the JSON array, no markdown, no explanation.`,
       },

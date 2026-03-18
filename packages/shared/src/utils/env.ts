@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+// ── Supported languages ──
+
+export const SUPPORTED_LANGUAGES = [
+  "english", "italian", "spanish", "french", "german", "portuguese",
+] as const;
+export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
+export const SUPPORTED_LANGUAGES_SET = new Set<string>(SUPPORTED_LANGUAGES);
+
 // ── Gateway Config (loaded from config.yaml) ──
 
 export interface McpServerConfig {
@@ -52,6 +60,7 @@ export interface GatewayConfig {
   api?: {
     enabled: boolean;
     port: number;
+    api_key?: string;
     user_map: Record<string, number>;
   };
   mcp: {
@@ -73,6 +82,7 @@ export const agentEnvSchema = z.object({
   OPENROUTER_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   MCP_BRIDGE_URL: z.string().optional(),
+  AGENT_SECRET: z.string().optional(),
 });
 
 export type AgentEnv = z.infer<typeof agentEnvSchema>;

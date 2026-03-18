@@ -10,6 +10,7 @@ const logger = createLogger("api");
 
 interface ApiConfig {
   port: number;
+  apiKey?: string;
   userMap: Record<string, number>;
 }
 
@@ -17,6 +18,9 @@ interface ChatBody {
   message: string;
   user?: string;
 }
+
+const MAX_REQUESTS_PER_MINUTE = 30;
+const rateLimitStore = new Map<string, number[]>();
 
 /**
  * Local HTTP API — alternative frontend to Telegram.
@@ -33,7 +37,45 @@ export async function startApiServer(
 ) {
   const app = Fastify({ logger: false });
 
-  await app.register(cors, { origin: true });
+  await app.register(cors, {
+    origin: config.apiKey ? false : true,
+  });
+
+  // API key authentication
+  if (config.apiKey) {
+    app.addHook("onRequest", async (request, reply) => {
+      // Skip auth for health check
+      if (request.url === "/health") return;
+
+      const authHeader = request.headers.authorization;
+      if (!authHeader || authHeader !== `Bearer ${config.apiKey}`) {
+        reply.status(401).send({ error: "Unauthorized" });
+        return;
+      }
+    });
+    logger.info("API authentication enabled");
+  } else {
+    logger.warn("API running without authentication — set api.api_key in config.yaml");
+  }
+
+  // Simple rate limiting
+  app.addHook("onRequest", async (request, reply) => {
+    if (request.url === "/health") return;
+
+    const ip = request.ip;
+    const now = Date.now();
+    const windowMs = 60_000;
+
+    let timestamps = rateLimitStore.get(ip) || [];
+    timestamps = timestamps.filter((t) => now - t < windowMs);
+    timestamps.push(now);
+    rateLimitStore.set(ip, timestamps);
+
+    if (timestamps.length > MAX_REQUESTS_PER_MINUTE) {
+      reply.status(429).send({ error: "Too many requests" });
+      return;
+    }
+  });
 
   function resolveUser(userKey?: string): { telegramId: number; username: string } {
     const key = userKey || "local";
@@ -45,7 +87,7 @@ export async function startApiServer(
   }
 
   app.get("/health", async () => {
-    return { status: "ok", users: Object.keys(config.userMap) };
+    return { status: "ok" };
   });
 
   app.post<{ Body: ChatBody }>("/chat", async (request, reply) => {
@@ -70,7 +112,7 @@ export async function startApiServer(
       };
     } catch (err: any) {
       logger.error("API chat error", { error: err });
-      return reply.status(500).send({ error: err.message });
+      return reply.status(500).send({ error: "Internal server error" });
     }
   });
 
@@ -133,7 +175,7 @@ export async function startApiServer(
       };
     } catch (err: any) {
       logger.error("API status error", { error: err });
-      return reply.status(500).send({ error: err.message });
+      return reply.status(500).send({ error: "Internal server error" });
     }
   });
 

@@ -4,22 +4,39 @@ services:
       context: .
       dockerfile: packages/gateway/Dockerfile
     restart: unless-stopped
+    environment:
+      DOCKER_HOST: tcp://docker-proxy:2375
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - ./config.yaml:/app/config.yaml:ro
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      docker-proxy:
+        condition: service_started
+    networks:
+      - piti
+
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1
+      POST: 1
+      NETWORKS: 0
+      VOLUMES: 0
+      IMAGES: 0
+      EXEC: 0
+      SWARM: 0
     networks:
       - piti
 
   postgres:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
-    ports:
-      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -38,8 +55,6 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    ports:
-      - "6379:6379"
     volumes:
       - redisdata:/data
     healthcheck:
@@ -54,8 +69,6 @@ services:
     build:
       context: packages/mcp-bridge
     image: piti-mcp-bridge
-    ports:
-      - "5100:5100"
     volumes:
       - ./config.yaml:/app/config.yaml:ro
     restart: unless-stopped
