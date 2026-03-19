@@ -10,6 +10,28 @@ export interface User {
   language: string;
 }
 
+export const AGENT_CHARACTERS = [
+  "default",
+  "drill-sergeant",
+  "best-friend",
+  "scientist",
+  "zen-master",
+  "hype-coach",
+] as const;
+
+export type AgentCharacter = (typeof AGENT_CHARACTERS)[number];
+
+export const AGENT_CHARACTER_LABELS: Record<AgentCharacter, string> = {
+  "default": "Balanced Coach",
+  "drill-sergeant": "Drill Sergeant",
+  "best-friend": "Best Friend",
+  "scientist": "The Scientist",
+  "zen-master": "Zen Master",
+  "hype-coach": "Hype Coach",
+};
+
+export const AGENT_CHARACTER_SET = new Set<string>(AGENT_CHARACTERS);
+
 export interface UserProfile {
   age?: number;
   gender?: string;
@@ -21,4 +43,6 @@ export interface UserProfile {
   fitnessLevel?: "beginner" | "intermediate" | "advanced";
   preferredWorkoutTime?: string;
   equipmentAvailable?: string[];
+  agentName?: string;
+  agentCharacter?: AgentCharacter;
 }

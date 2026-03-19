@@ -2,6 +2,7 @@ import type { Context } from "telegraf";
 import { eq, sql } from "drizzle-orm";
 import type { Database } from "../../db/client.js";
 import { users, messages, memories, tokenUsage, mcpCalls } from "../../db/schema.js";
+import { AGENT_CHARACTER_LABELS, type AgentCharacter } from "@piti/shared";
 
 const creditsTranslations: Record<string, Record<string, string>> = {
   english: { title: "Your Credits", plan: "Plan", remaining: "Credits remaining", costs: "Credit costs", simple: "Simple question", detailed: "Detailed plan", vision: "Photo/video analysis", search: "Web search", credit: "credit", credits: "credits" },
@@ -179,6 +180,8 @@ export function registerCommandHandlers(
     await ctx.reply(
       "PITI Commands:\n\n" +
         "/language - Change language\n" +
+        "/character - Choose your coach personality\n" +
+        "/name - Set your coach's name\n" +
         "/profile - View your fitness profile\n" +
         "/subscription - Manage your plan\n" +
         "/credits - Check credit balance\n" +
@@ -193,6 +196,140 @@ export function registerCommandHandlers(
   // /language — flag picker
   bot.command("language", async (ctx: Context) => {
     await ctx.reply("Choose your language:", LANGUAGE_KEYBOARD as any);
+  });
+
+  // /character — choose agent personality
+  const CHARACTER_KEYBOARD = {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "Balanced Coach", callback_data: "setchar_default" },
+          { text: "Drill Sergeant", callback_data: "setchar_drill-sergeant" },
+        ],
+        [
+          { text: "Best Friend", callback_data: "setchar_best-friend" },
+          { text: "The Scientist", callback_data: "setchar_scientist" },
+        ],
+        [
+          { text: "Zen Master", callback_data: "setchar_zen-master" },
+          { text: "Hype Coach", callback_data: "setchar_hype-coach" },
+        ],
+      ],
+    },
+  };
+
+  const characterDescriptions: Record<string, string> = {
+    english: "Choose your coach's personality:",
+    italian: "Scegli la personalita' del tuo coach:",
+    spanish: "Elige la personalidad de tu entrenador:",
+    french: "Choisissez la personnalite de votre coach :",
+    german: "Wahle die Personlichkeit deines Trainers:",
+    portuguese: "Escolha a personalidade do seu treinador:",
+  };
+
+  bot.command("character", async (ctx: Context) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+    const lang = await getUserLang(db, telegramId);
+    const prompt = characterDescriptions[lang] || characterDescriptions.english;
+
+    // Show current character
+    const user = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
+    const profile = (user.length > 0 ? user[0].profile : {}) as Record<string, unknown>;
+    const current = (profile.agentCharacter as AgentCharacter) || "default";
+    const currentLabel = AGENT_CHARACTER_LABELS[current] || "Balanced Coach";
+
+    await ctx.reply(`${prompt}\n\nCurrent: <b>${escapeHtml(currentLabel)}</b>`, {
+      parse_mode: "HTML",
+      ...CHARACTER_KEYBOARD,
+    } as any);
+  });
+
+  // /name — set agent name
+  const pendingName = new Map<number, number>();
+  const PENDING_NAME_TTL_MS = 60_000;
+
+  const namePrompts: Record<string, string> = {
+    english: "What should I call your coach? Send a name (max 30 characters):",
+    italian: "Come vuoi chiamare il tuo coach? Invia un nome (max 30 caratteri):",
+    spanish: "Como quieres llamar a tu entrenador? Envia un nombre (max 30 caracteres):",
+    french: "Comment voulez-vous appeler votre coach ? Envoyez un nom (max 30 caracteres) :",
+    german: "Wie soll dein Trainer heissen? Sende einen Namen (max 30 Zeichen):",
+    portuguese: "Como voce quer chamar seu treinador? Envie um nome (max 30 caracteres):",
+  };
+
+  const nameConfirms: Record<string, string> = {
+    english: "Your coach is now called <b>{name}</b>!",
+    italian: "Il tuo coach ora si chiama <b>{name}</b>!",
+    spanish: "Tu entrenador ahora se llama <b>{name}</b>!",
+    french: "Votre coach s'appelle maintenant <b>{name}</b> !",
+    german: "Dein Trainer heisst jetzt <b>{name}</b>!",
+    portuguese: "Seu treinador agora se chama <b>{name}</b>!",
+  };
+
+  bot.command("name", async (ctx: Context) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const text = (ctx.message as any)?.text || "";
+    const nameArg = text.split(" ").slice(1).join(" ").trim();
+    const lang = await getUserLang(db, telegramId);
+
+    if (!nameArg) {
+      pendingName.set(telegramId, Date.now());
+      await ctx.reply(namePrompts[lang] || namePrompts.english);
+      return;
+    }
+
+    // Handled inline via dispatch — we need dispatcher access, so we'll handle in message handler
+    pendingName.set(telegramId, Date.now());
+    // Simulate the name being sent as a message by emitting it to the pending handler
+    // Actually, just set it directly here — we need db access
+    const trimmed = nameArg.trim().slice(0, 30);
+    const user = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
+    if (user.length === 0) {
+      await ctx.reply("Send me a message first to get started!");
+      return;
+    }
+    const profile = (user[0].profile as Record<string, unknown>) || {};
+    profile.agentName = trimmed;
+    await db.update(users).set({ profile }).where(eq(users.telegramId, telegramId));
+
+    const t = nameConfirms[lang] || nameConfirms.english;
+    await ctx.reply(t.replace("{name}", escapeHtml(trimmed)), { parse_mode: "HTML" });
+  });
+
+  // Handle name input from pending prompt
+  bot.on("text", async (ctx: any, next: () => Promise<void>) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return next();
+
+    const timestamp = pendingName.get(telegramId);
+    if (!timestamp) return next();
+
+    if (Date.now() - timestamp > PENDING_NAME_TTL_MS) {
+      pendingName.delete(telegramId);
+      return next();
+    }
+
+    const nameText = ((ctx.message as any)?.text || "").trim();
+    if (!nameText || nameText.startsWith("/")) {
+      pendingName.delete(telegramId);
+      return next();
+    }
+
+    pendingName.delete(telegramId);
+    const trimmed = nameText.slice(0, 30);
+    const lang = await getUserLang(db, telegramId);
+
+    const user = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
+    if (user.length === 0) return next();
+    const profile = (user[0].profile as Record<string, unknown>) || {};
+    profile.agentName = trimmed;
+    await db.update(users).set({ profile }).where(eq(users.telegramId, telegramId));
+
+    const t = nameConfirms[lang] || nameConfirms.english;
+    await ctx.reply(t.replace("{name}", escapeHtml(trimmed)), { parse_mode: "HTML" });
   });
 
   // /referral — show referral link and stats
@@ -288,8 +425,14 @@ export function registerCommandHandlers(
       preference: "Preferences",
     };
 
+    const profile = (user[0].profile || {}) as Record<string, unknown>;
+    const agentName = (profile.agentName as string) || "PITI";
+    const agentChar = (profile.agentCharacter as AgentCharacter) || "default";
+    const charLabel = AGENT_CHARACTER_LABELS[agentChar] || "Balanced Coach";
+
     let msg = `<b>Your Profile</b>\n`;
-    msg += `Language: ${escapeHtml(user[0].language)}\n\n`;
+    msg += `Language: ${escapeHtml(user[0].language)}\n`;
+    msg += `Coach: <b>${escapeHtml(agentName)}</b> (${escapeHtml(charLabel)})\n\n`;
 
     for (const [cat, items] of Object.entries(groups)) {
       const label = categoryLabels[cat] || escapeHtml(cat);

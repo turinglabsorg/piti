@@ -1,7 +1,7 @@
 import type { Context } from "telegraf";
 import type { Dispatcher } from "../../orchestrator/dispatcher.js";
 import type { MediaAttachment } from "@piti/shared";
-import { createLogger, SUPPORTED_LANGUAGES_SET } from "@piti/shared";
+import { createLogger, SUPPORTED_LANGUAGES_SET, AGENT_CHARACTER_SET, AGENT_CHARACTER_LABELS, type AgentCharacter } from "@piti/shared";
 
 const logger = createLogger("message-handler");
 
@@ -32,6 +32,29 @@ export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
     const name = langNames[language] || language;
     await ctx.answerCbQuery(`${name}`);
     await ctx.editMessageText(`${name} selected!`);
+  });
+
+  // Handle character selection callback
+  bot.action(/^setchar_(.+)$/, async (ctx: any) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const character = ctx.match[1];
+    if (!AGENT_CHARACTER_SET.has(character)) {
+      logger.warn("Invalid character callback", { telegramId, character });
+      await ctx.answerCbQuery("Invalid character");
+      return;
+    }
+
+    const success = await dispatcher.setUserCharacter(telegramId, character);
+    if (!success) {
+      await ctx.answerCbQuery("Send a message first to get started!");
+      return;
+    }
+
+    const label = AGENT_CHARACTER_LABELS[character as AgentCharacter] || character;
+    await ctx.answerCbQuery(label);
+    await ctx.editMessageText(`Coach personality: <b>${label}</b>`, { parse_mode: "HTML" });
   });
 
   // Handle text messages

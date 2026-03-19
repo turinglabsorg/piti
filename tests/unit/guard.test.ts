@@ -74,13 +74,13 @@ describe("Guard - Heuristic Layer (isObviouslyOffTopic)", () => {
 });
 
 describe("Guard - getRefusalMessage", () => {
-  it("returns English refusal by default", () => {
+  it("returns English refusal with default name", () => {
     const msg = getRefusalMessage("english");
     expect(msg).toContain("PITI");
     expect(msg).toContain("fitness");
   });
 
-  it("returns Italian refusal", () => {
+  it("returns Italian refusal with default name", () => {
     const msg = getRefusalMessage("italian");
     expect(msg).toContain("PITI");
     expect(msg).toContain("fitness");
@@ -90,5 +90,27 @@ describe("Guard - getRefusalMessage", () => {
     const msg = getRefusalMessage("klingon");
     expect(msg).toContain("PITI");
     expect(msg).toContain("fitness");
+  });
+
+  it("uses custom agent name in refusal message", () => {
+    const msg = getRefusalMessage("english", "Coach Rex");
+    expect(msg).toContain("Coach Rex");
+    expect(msg).not.toContain("PITI");
+    expect(msg).toContain("fitness");
+  });
+
+  it("uses custom agent name in Italian refusal", () => {
+    const msg = getRefusalMessage("italian", "Maestro Zen");
+    expect(msg).toContain("Maestro Zen");
+    expect(msg).not.toContain("PITI");
+  });
+
+  it("uses custom agent name across all supported languages", () => {
+    const languages = ["english", "italian", "spanish", "french", "german", "portuguese"];
+    for (const lang of languages) {
+      const msg = getRefusalMessage(lang, "CustomBot");
+      expect(msg).toContain("CustomBot");
+      expect(msg).not.toContain("PITI");
+    }
   });
 });

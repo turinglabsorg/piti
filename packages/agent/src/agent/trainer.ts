@@ -2,7 +2,7 @@ import { generateText } from "ai";
 import { getModel } from "../llm/provider.js";
 import { buildSystemPrompt } from "./systemPrompt.js";
 import { isObviouslyOffTopic, getRefusalMessage } from "./guard.js";
-import type { AgentRequest, AgentResponse, ExtractedMemory, MediaAttachment, TokenUsage } from "@piti/shared";
+import type { AgentRequest, AgentResponse, ExtractedMemory, MediaAttachment, TokenUsage, UserProfile } from "@piti/shared";
 import { getMaxTokens } from "@piti/shared";
 import { createLogger } from "@piti/shared";
 
@@ -15,11 +15,12 @@ export async function handleChat(
   mcpTools: Record<string, any> = {}
 ): Promise<AgentResponse> {
   const allTokenUsage: TokenUsage[] = [];
+  const agentName = (request.userProfile as UserProfile)?.agentName || "PITI";
 
   // Layer 1: fast heuristic guard
   if (isObviouslyOffTopic(request.message)) {
     logger.info("Guard blocked (heuristic)", { userId: request.userId });
-    return { reply: getRefusalMessage(request.language), newMemories: [], tokenUsage: [] };
+    return { reply: getRefusalMessage(request.language, agentName), newMemories: [], tokenUsage: [] };
   }
 
   // Layer 2: router model classifies + guards in one call
@@ -35,7 +36,7 @@ export async function handleChat(
 
   if (classification === "off-topic") {
     logger.info("Guard blocked (router)", { userId: request.userId });
-    return { reply: getRefusalMessage(request.language), newMemories: [], tokenUsage: allTokenUsage };
+    return { reply: getRefusalMessage(request.language, agentName), newMemories: [], tokenUsage: allTokenUsage };
   }
 
   // Media always uses smart model; otherwise pick based on complexity

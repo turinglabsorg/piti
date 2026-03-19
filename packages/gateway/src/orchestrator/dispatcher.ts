@@ -2,8 +2,8 @@ import { eq, desc, sql } from "drizzle-orm";
 import type { Database } from "../db/client.js";
 import { users, messages, memories, tokenUsage, mcpCalls } from "../db/schema.js";
 import { ContainerManager } from "./containerManager.js";
-import type { AgentRequest, AgentResponse, ChatMessage, Memory, MediaAttachment, TokenUsage, McpCall } from "@piti/shared";
-import { createLogger, SUPPORTED_LANGUAGES_SET } from "@piti/shared";
+import type { AgentRequest, AgentResponse, ChatMessage, Memory, MediaAttachment, TokenUsage, McpCall, AgentCharacter } from "@piti/shared";
+import { createLogger, SUPPORTED_LANGUAGES_SET, AGENT_CHARACTER_SET } from "@piti/shared";
 import type { BillingClient } from "../billing/client.js";
 
 const logger = createLogger("dispatcher");
@@ -167,6 +167,38 @@ export class Dispatcher {
       .set({ language })
       .where(eq(users.telegramId, telegramId));
     logger.info("User language updated", { telegramId, language });
+  }
+
+  async setUserAgentName(telegramId: number, name: string): Promise<boolean> {
+    const trimmed = name.trim().slice(0, 30);
+    if (!trimmed) return false;
+
+    const existing = await this.db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
+    if (existing.length === 0) return false;
+
+    const profile = (existing[0].profile as Record<string, unknown>) || {};
+    profile.agentName = trimmed;
+
+    await this.db.update(users).set({ profile }).where(eq(users.telegramId, telegramId));
+    logger.info("User agent name updated", { telegramId, agentName: trimmed });
+    return true;
+  }
+
+  async setUserCharacter(telegramId: number, character: string): Promise<boolean> {
+    if (!AGENT_CHARACTER_SET.has(character)) {
+      logger.warn("Rejected invalid character", { telegramId, character });
+      return false;
+    }
+
+    const existing = await this.db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
+    if (existing.length === 0) return false;
+
+    const profile = (existing[0].profile as Record<string, unknown>) || {};
+    profile.agentCharacter = character;
+
+    await this.db.update(users).set({ profile }).where(eq(users.telegramId, telegramId));
+    logger.info("User agent character updated", { telegramId, character });
+    return true;
   }
 
   private async getOrCreateUser(
