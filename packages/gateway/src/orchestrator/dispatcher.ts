@@ -157,6 +157,11 @@ export class Dispatcher {
     };
   }
 
+  async getUserLanguage(telegramId: number): Promise<string> {
+    const row = await this.db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
+    return row.length > 0 ? row[0].language : "english";
+  }
+
   async setUserLanguage(telegramId: number, language: string) {
     if (!SUPPORTED_LANGUAGES_SET.has(language)) {
       logger.warn("Rejected invalid language", { telegramId, language });

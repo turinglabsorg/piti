@@ -5,6 +5,47 @@ import { createLogger, SUPPORTED_LANGUAGES_SET, AGENT_CHARACTER_SET, AGENT_CHARA
 
 const logger = createLogger("message-handler");
 
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+
+  const CHARACTER_INLINE_KEYBOARD = [
+    [
+      { text: "Balanced Coach", callback_data: "setchar_default" },
+      { text: "Drill Sergeant", callback_data: "setchar_drill-sergeant" },
+    ],
+    [
+      { text: "Best Friend", callback_data: "setchar_best-friend" },
+      { text: "The Scientist", callback_data: "setchar_scientist" },
+    ],
+    [
+      { text: "Zen Master", callback_data: "setchar_zen-master" },
+      { text: "Hype Coach", callback_data: "setchar_hype-coach" },
+    ],
+  ];
+
+  const characterPrompts: Record<string, string> = {
+    english: "Now choose your coach's personality:",
+    italian: "Ora scegli la personalita' del tuo coach:",
+    spanish: "Ahora elige la personalidad de tu entrenador:",
+    french: "Maintenant choisissez la personnalite de votre coach :",
+    german: "Wahle jetzt die Personlichkeit deines Trainers:",
+    portuguese: "Agora escolha a personalidade do seu treinador:",
+  };
+
+  const namePrompts: Record<string, string> = {
+    english: "Last step! Send a name for your coach (or send any message to skip and keep \"PITI\"):",
+    italian: "Ultimo passo! Invia un nome per il tuo coach (o invia un messaggio per saltare e tenere \"PITI\"):",
+    spanish: "Ultimo paso! Envia un nombre para tu entrenador (o envia un mensaje para saltar y mantener \"PITI\"):",
+    french: "Derniere etape ! Envoyez un nom pour votre coach (ou envoyez un message pour garder \"PITI\") :",
+    german: "Letzter Schritt! Sende einen Namen fur deinen Trainer (oder sende eine Nachricht um \"PITI\" zu behalten):",
+    portuguese: "Ultimo passo! Envie um nome para seu treinador (ou envie uma mensagem para manter \"PITI\"):",
+  };
+
+  // Track users in onboarding name step (telegramId -> timestamp)
+  const pendingOnboardingName = new Map<number, number>();
+  const ONBOARDING_NAME_TTL_MS = 120_000;
 
 export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
   // Handle language selection callback — validate against whitelist
@@ -32,6 +73,12 @@ export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
     const name = langNames[language] || language;
     await ctx.answerCbQuery(`${name}`);
     await ctx.editMessageText(`${name} selected!`);
+
+    // Show character picker as next onboarding step
+    const charPrompt = characterPrompts[language] || characterPrompts.english;
+    await ctx.reply(charPrompt, {
+      reply_markup: { inline_keyboard: CHARACTER_INLINE_KEYBOARD },
+    });
   });
 
   // Handle character selection callback
@@ -55,6 +102,12 @@ export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
     const label = AGENT_CHARACTER_LABELS[character as AgentCharacter] || character;
     await ctx.answerCbQuery(label);
     await ctx.editMessageText(`Coach personality: <b>${label}</b>`, { parse_mode: "HTML" });
+
+    // Show name prompt as next onboarding step
+    const lang = await dispatcher.getUserLanguage(telegramId);
+    const namePrompt = namePrompts[lang] || namePrompts.english;
+    pendingOnboardingName.set(telegramId, Date.now());
+    await ctx.reply(namePrompt);
   });
 
   // Handle text messages
@@ -64,6 +117,28 @@ export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
 
     if (!text || !telegramId) return;
     if (text.startsWith("/")) return;
+
+    // Check if user is in onboarding name step
+    const onboardingTs = pendingOnboardingName.get(telegramId);
+    if (onboardingTs && Date.now() - onboardingTs < ONBOARDING_NAME_TTL_MS) {
+      pendingOnboardingName.delete(telegramId);
+      const trimmed = text.trim().slice(0, 30);
+      if (trimmed) {
+        await dispatcher.setUserAgentName(telegramId, trimmed);
+        const lang = await dispatcher.getUserLanguage(telegramId);
+        const confirmMsgs: Record<string, string> = {
+          english: `Your coach is now called <b>${escapeHtml(trimmed)}</b>! Start chatting!`,
+          italian: `Il tuo coach ora si chiama <b>${escapeHtml(trimmed)}</b>! Inizia a chattare!`,
+          spanish: `Tu entrenador ahora se llama <b>${escapeHtml(trimmed)}</b>! Empieza a chatear!`,
+          french: `Votre coach s'appelle maintenant <b>${escapeHtml(trimmed)}</b> ! Commencez a discuter !`,
+          german: `Dein Trainer heisst jetzt <b>${escapeHtml(trimmed)}</b>! Fang an zu chatten!`,
+          portuguese: `Seu treinador agora se chama <b>${escapeHtml(trimmed)}</b>! Comece a conversar!`,
+        };
+        await ctx.reply(confirmMsgs[lang] || confirmMsgs.english, { parse_mode: "HTML" });
+        return;
+      }
+    }
+    pendingOnboardingName.delete(telegramId);
 
     await handleUserMessage(ctx, dispatcher, telegramId, text);
   });
