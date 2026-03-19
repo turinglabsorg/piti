@@ -183,8 +183,8 @@ export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: ct.confirm, callback_data: `confirmchar_${character}` },
-              { text: ct.back, callback_data: "backchar" },
+              { text: `< ${ct.back}`, callback_data: "backchar" },
+              { text: `${ct.confirm} >`, callback_data: `confirmchar_${character}` },
             ],
           ],
         },
