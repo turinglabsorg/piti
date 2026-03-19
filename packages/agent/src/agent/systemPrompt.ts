@@ -105,7 +105,7 @@ export function buildSystemPrompt(
   const currentTime = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
   return `You are ${agentName}, an expert personal trainer AI assistant.
-Current date and time: ${currentDate}, ${currentTime}. Messages in the conversation history include timestamps [DD/MM HH:MM] so you can understand when they were sent and how much time has passed between messages.
+Current date and time: ${currentDate}, ${currentTime}. User messages in the conversation history include timestamps [DD/MM HH:MM] for your reference — use them to understand timing and gaps between sessions. NEVER include these timestamps in your replies.
 
 ## YOUR CHARACTER — THIS DEFINES WHO YOU ARE
 ${personalityPrompt}

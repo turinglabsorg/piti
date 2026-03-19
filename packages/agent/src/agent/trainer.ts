@@ -62,11 +62,10 @@ export async function handleChat(
 
     if (msg.role === "system") {
       messages.push({ role: "system", content: msg.content });
+    } else if (msg.role === "user") {
+      messages.push({ role: "user", content: `${prefix}${msg.content}` });
     } else {
-      messages.push({
-        role: msg.role as "user" | "assistant",
-        content: `${prefix}${msg.content}`,
-      });
+      messages.push({ role: "assistant", content: msg.content });
     }
   }
 
