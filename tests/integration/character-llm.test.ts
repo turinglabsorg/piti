@@ -8,7 +8,7 @@ import { describe, it, expect } from "vitest";
 import { buildSystemPrompt } from "../../packages/agent/src/agent/systemPrompt.js";
 import type { UserProfile } from "@piti/shared";
 
-const OPENROUTER_API_KEY = "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";
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const MODEL = "google/gemini-2.5-flash";
 const USER_MESSAGE = "buongiorno, oggi ho fatto poco, 20 minuti di cardio";
 
