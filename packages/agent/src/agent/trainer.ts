@@ -54,13 +54,20 @@ export async function handleChat(
   const model = getModel(request.llmProvider, selectedModel);
   const systemPrompt = buildSystemPrompt(request.userProfile, request.memories, request.language);
 
-  // Build message history
-  const messages: Array<{ role: "user" | "assistant"; content: any }> = [];
+  // Build message history with timestamps
+  const messages: Array<{ role: "user" | "assistant" | "system"; content: any }> = [];
   for (const msg of request.conversationHistory) {
-    messages.push({
-      role: msg.role as "user" | "assistant",
-      content: msg.content,
-    });
+    const ts = msg.createdAt ? formatTimestamp(msg.createdAt) : "";
+    const prefix = ts ? `[${ts}] ` : "";
+
+    if (msg.role === "system") {
+      messages.push({ role: "system", content: msg.content });
+    } else {
+      messages.push({
+        role: msg.role as "user" | "assistant",
+        content: `${prefix}${msg.content}`,
+      });
+    }
   }
 
   // Build current message — with media if present
@@ -359,4 +366,14 @@ function getProviderConfig(provider: string): {
     default:
       throw new Error(`Unknown provider: ${provider}`);
   }
+}
+
+function formatTimestamp(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return "";
+  const day = d.getDate().toString().padStart(2, "0");
+  const month = (d.getMonth() + 1).toString().padStart(2, "0");
+  const hours = d.getHours().toString().padStart(2, "0");
+  const minutes = d.getMinutes().toString().padStart(2, "0");
+  return `${day}/${month} ${hours}:${minutes}`;
 }

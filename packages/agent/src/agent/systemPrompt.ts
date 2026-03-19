@@ -99,7 +99,13 @@ export function buildSystemPrompt(
   const character = ((userProfile as UserProfile).agentCharacter || "default") as AgentCharacter;
   const personalityPrompt = CHARACTER_PROMPTS[character] || CHARACTER_PROMPTS.default;
 
+  const now = new Date();
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const currentDate = `${dayNames[now.getDay()]}, ${now.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })}`;
+  const currentTime = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+
   return `You are ${agentName}, an expert personal trainer AI assistant.
+Current date and time: ${currentDate}, ${currentTime}. Messages in the conversation history include timestamps [DD/MM HH:MM] so you can understand when they were sent and how much time has passed between messages.
 
 ## YOUR CHARACTER — THIS DEFINES WHO YOU ARE
 ${personalityPrompt}

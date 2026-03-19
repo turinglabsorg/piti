@@ -119,6 +119,9 @@ async function main() {
   // Launch bot — drop pending updates to avoid 409 conflict with previous instance
   bot.launch({ dropPendingUpdates: true });
 
+  // Daily date-change scheduler — runs at midnight local time
+  scheduleDailyDateChange(dispatcher);
+
   // Start local HTTP API if enabled
   if (config.api?.enabled) {
     await startApiServer(
@@ -133,6 +136,38 @@ async function main() {
   }
 
   logger.info("PITI Gateway started");
+}
+
+function scheduleDailyDateChange(dispatcher: Dispatcher) {
+  const runAtMidnight = () => {
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+    const msUntilMidnight = tomorrow.getTime() - now.getTime();
+
+    setTimeout(async () => {
+      try {
+        const today = new Date();
+        const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        const dayName = dayNames[today.getDay()];
+        const dateStr = today.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+
+        const content = `[SYSTEM] Today is ${dayName}, ${dateStr}. A new day has started. Consider the user's weekly routine, goals, and schedule when they message you today.`;
+        const count = await dispatcher.broadcastSystemMessage(content);
+        logger.info("Daily date change broadcast", { date: dateStr, usersNotified: count });
+      } catch (err) {
+        logger.error("Daily date change failed", { error: err });
+      }
+
+      // Schedule next run
+      runAtMidnight();
+    }, msUntilMidnight);
+
+    logger.info("Daily scheduler set", { nextRunIn: `${Math.round(msUntilMidnight / 60000)}min` });
+  };
+
+  runAtMidnight();
 }
 
 main().catch((err) => {

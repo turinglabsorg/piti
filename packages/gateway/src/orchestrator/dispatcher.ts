@@ -206,6 +206,26 @@ export class Dispatcher {
     return true;
   }
 
+  /**
+   * Insert a system message into all active users' conversation history.
+   * Used for daily date-change notifications so the agent knows the current date.
+   */
+  async broadcastSystemMessage(content: string): Promise<number> {
+    const allUsers = await this.db.select({ id: users.id }).from(users);
+    if (allUsers.length === 0) return 0;
+
+    await this.db.insert(messages).values(
+      allUsers.map((u) => ({
+        userId: u.id,
+        role: "system",
+        content,
+      }))
+    );
+
+    logger.info("System message broadcast", { userCount: allUsers.length, content: content.slice(0, 100) });
+    return allUsers.length;
+  }
+
   private async getOrCreateUser(
     telegramId: number,
     username?: string,
