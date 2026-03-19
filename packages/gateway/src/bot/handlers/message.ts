@@ -10,42 +10,116 @@ function escapeHtml(str: string): string {
 }
 
 
-  const CHARACTER_INLINE_KEYBOARD = [
+// Translated character labels for inline keyboard buttons
+const characterLabels: Record<string, Record<AgentCharacter, string>> = {
+  english: { "default": "Balanced Coach", "drill-sergeant": "Drill Sergeant", "best-friend": "Best Friend", "scientist": "The Scientist", "zen-master": "Zen Master", "hype-coach": "Hype Coach" },
+  italian: { "default": "Coach Equilibrato", "drill-sergeant": "Sergente Istruttore", "best-friend": "Migliore Amico", "scientist": "Lo Scienziato", "zen-master": "Maestro Zen", "hype-coach": "Coach Carico" },
+  spanish: { "default": "Coach Equilibrado", "drill-sergeant": "Sargento Instructor", "best-friend": "Mejor Amigo", "scientist": "El Cientifico", "zen-master": "Maestro Zen", "hype-coach": "Coach Motivador" },
+  french: { "default": "Coach Equilibre", "drill-sergeant": "Sergent Instructeur", "best-friend": "Meilleur Ami", "scientist": "Le Scientifique", "zen-master": "Maitre Zen", "hype-coach": "Coach Motive" },
+  german: { "default": "Ausgeglichener Trainer", "drill-sergeant": "Drill-Sergeant", "best-friend": "Bester Freund", "scientist": "Der Wissenschaftler", "zen-master": "Zen-Meister", "hype-coach": "Hype-Trainer" },
+  portuguese: { "default": "Coach Equilibrado", "drill-sergeant": "Sargento Instrutor", "best-friend": "Melhor Amigo", "scientist": "O Cientista", "zen-master": "Mestre Zen", "hype-coach": "Coach Motivador" },
+};
+
+// Translated character descriptions shown in the preview before confirming
+const characterDescriptions: Record<string, Record<AgentCharacter, string>> = {
+  english: {
+    "default": "A balanced, friendly coach. Talks like a knowledgeable gym buddy — direct, casual, and honest. Gets straight to the point without being too serious.",
+    "drill-sergeant": "A tough, no-nonsense military-style coach. Accepts no excuses, gives short orders, and pushes hard. Celebrates wins minimally, then immediately raises the bar. Tough love — because they care.",
+    "best-friend": "Your warmest, most supportive gym buddy. Celebrates every win (big or small!), uses humor, and always has your back. Empathizes when you struggle, then gently guides you forward.",
+    "scientist": "A data-driven fitness expert who explains the WHY behind everything. References mechanisms, percentages, and evidence. Think of a sports science professor who actually lifts.",
+    "zen-master": "A calm, mindful coach focused on balance and the mind-body connection. Emphasizes recovery, sustainable habits, and holistic wellness. Speaks softly but with authority — fewer words, more impact.",
+    "hype-coach": "MAXIMUM ENERGY. Every workout is an opportunity, every rep counts, every PR is LEGENDARY. Think of a pre-workout supplement in human form. Infectious enthusiasm that makes you WANT to train!",
+  },
+  italian: {
+    "default": "Un coach equilibrato e amichevole. Parla come un compagno di palestra che ne sa — diretto, informale e onesto. Va dritto al punto senza essere troppo serio.",
+    "drill-sergeant": "Un coach duro, stile militare. Non accetta scuse, da ordini secchi e ti spinge al massimo. Festeggia i traguardi brevemente, poi alza subito l'asticella. Duro — perche' ci tiene a te.",
+    "best-friend": "Il tuo compagno di palestra piu' caloroso e solidale. Festeggia ogni vittoria (grande o piccola!), usa l'umorismo e ti copre sempre le spalle. Ti capisce quando fai fatica, poi ti guida dolcemente.",
+    "scientist": "Un esperto di fitness basato sui dati che spiega il PERCHE' di tutto. Cita meccanismi, percentuali e studi. Pensa a un professore di scienze motorie che si allena davvero.",
+    "zen-master": "Un coach calmo e consapevole, focalizzato sull'equilibrio e la connessione mente-corpo. Enfatizza il recupero, le abitudini sostenibili e il benessere olistico. Parla piano ma con autorita'.",
+    "hype-coach": "ENERGIA AL MASSIMO. Ogni allenamento e' un'opportunita', ogni rep conta, ogni PR e' LEGGENDARIO. Pensa a un pre-workout in forma umana. Entusiasmo contagioso che ti fa VENIRE VOGLIA di allenarti!",
+  },
+  spanish: {
+    "default": "Un coach equilibrado y amigable. Habla como un companero de gym que sabe — directo, casual y honesto. Va al grano sin ser demasiado serio.",
+    "drill-sergeant": "Un coach duro, estilo militar. No acepta excusas, da ordenes cortas y te empuja al maximo. Celebra logros brevemente, luego sube la barra. Duro — porque le importas.",
+    "best-friend": "Tu companero de gym mas calido y solidario. Celebra cada victoria (grande o pequena!), usa humor y siempre te respalda. Te comprende cuando luchas, luego te guia suavemente.",
+    "scientist": "Un experto en fitness basado en datos que explica el POR QUE de todo. Cita mecanismos, porcentajes y evidencia. Un profesor de ciencias del deporte que realmente entrena.",
+    "zen-master": "Un coach calmado y consciente, enfocado en el equilibrio y la conexion mente-cuerpo. Enfatiza la recuperacion, habitos sostenibles y bienestar integral. Habla suave pero con autoridad.",
+    "hype-coach": "ENERGIA MAXIMA. Cada entrenamiento es una oportunidad, cada rep cuenta, cada PR es LEGENDARIO. Un pre-entreno en forma humana. Entusiasmo contagioso que te hace QUERER entrenar!",
+  },
+  french: {
+    "default": "Un coach equilibre et amical. Parle comme un partenaire de salle qui s'y connait — direct, decontracte et honnete. Va droit au but sans etre trop serieux.",
+    "drill-sergeant": "Un coach dur, style militaire. N'accepte aucune excuse, donne des ordres courts et pousse fort. Celebre les victoires brievement, puis monte la barre. Dur — parce qu'il tient a toi.",
+    "best-friend": "Ton partenaire de salle le plus chaleureux et solidaire. Celebre chaque victoire (grande ou petite !), utilise l'humour et te soutient toujours. Comprend tes difficultes, puis te guide doucement.",
+    "scientist": "Un expert fitness base sur les donnees qui explique le POURQUOI de tout. Cite des mecanismes, pourcentages et preuves. Un prof de sciences du sport qui s'entraine vraiment.",
+    "zen-master": "Un coach calme et conscient, centre sur l'equilibre et la connexion corps-esprit. Met l'accent sur la recuperation, les habitudes durables et le bien-etre holistique. Parle doucement mais avec autorite.",
+    "hype-coach": "ENERGIE MAXIMALE. Chaque entrainement est une opportunite, chaque rep compte, chaque PR est LEGENDAIRE. Un pre-workout sous forme humaine. Enthousiasme contagieux qui te donne ENVIE de t'entrainer !",
+  },
+  german: {
+    "default": "Ein ausgeglichener, freundlicher Trainer. Redet wie ein wissender Gym-Kumpel — direkt, locker und ehrlich. Kommt auf den Punkt ohne zu ernst zu sein.",
+    "drill-sergeant": "Ein harter Trainer im Militar-Stil. Akzeptiert keine Ausreden, gibt kurze Befehle und pusht hart. Feiert Erfolge kurz, dann legt er sofort nach. Hart — weil es ihm wichtig ist.",
+    "best-friend": "Dein warmster, unterstutzendster Gym-Kumpel. Feiert jeden Erfolg (gross oder klein!), nutzt Humor und steht immer hinter dir. Versteht dich wenn du kampfst, dann fuhrt er dich sanft weiter.",
+    "scientist": "Ein datenbasierter Fitness-Experte der das WARUM hinter allem erklart. Zitiert Mechanismen, Prozentsatze und Studien. Ein Sportwissenschafts-Professor der wirklich trainiert.",
+    "zen-master": "Ein ruhiger, achtsamer Trainer fokussiert auf Balance und die Korper-Geist-Verbindung. Betont Erholung, nachhaltige Gewohnheiten und ganzheitliches Wohlbefinden. Spricht leise aber mit Autoritat.",
+    "hype-coach": "MAXIMALE ENERGIE. Jedes Training ist eine Chance, jede Rep zahlt, jeder PR ist LEGENDAR. Ein Pre-Workout in Menschenform. Ansteckende Begeisterung die dich TRAINIEREN lassen will!",
+  },
+  portuguese: {
+    "default": "Um coach equilibrado e amigavel. Fala como um parceiro de academia que entende — direto, casual e honesto. Vai direto ao ponto sem ser serio demais.",
+    "drill-sergeant": "Um coach duro, estilo militar. Nao aceita desculpas, da ordens curtas e empurra forte. Celebra conquistas brevemente, depois sobe a barra. Duro — porque se importa.",
+    "best-friend": "Seu parceiro de academia mais caloroso e solidario. Celebra cada vitoria (grande ou pequena!), usa humor e sempre te apoia. Te compreende quando luta, depois te guia gentilmente.",
+    "scientist": "Um especialista em fitness baseado em dados que explica o PORQUE de tudo. Cita mecanismos, porcentagens e evidencias. Um professor de ciencias do esporte que realmente treina.",
+    "zen-master": "Um coach calmo e consciente, focado no equilibrio e na conexao mente-corpo. Enfatiza recuperacao, habitos sustentaveis e bem-estar holistico. Fala suave mas com autoridade.",
+    "hype-coach": "ENERGIA MAXIMA. Cada treino e uma oportunidade, cada rep conta, cada PR e LENDARIO. Um pre-treino em forma humana. Entusiasmo contagioso que te faz QUERER treinar!",
+  },
+};
+
+const characterPickerPrompts: Record<string, string> = {
+  english: "Now choose your coach's personality:",
+  italian: "Ora scegli la personalita' del tuo coach:",
+  spanish: "Ahora elige la personalidad de tu entrenador:",
+  french: "Maintenant choisissez la personnalite de votre coach :",
+  german: "Wahle jetzt die Personlichkeit deines Trainers:",
+  portuguese: "Agora escolha a personalidade do seu treinador:",
+};
+
+const confirmTexts: Record<string, { confirm: string; back: string }> = {
+  english: { confirm: "Confirm", back: "Back" },
+  italian: { confirm: "Conferma", back: "Indietro" },
+  spanish: { confirm: "Confirmar", back: "Volver" },
+  french: { confirm: "Confirmer", back: "Retour" },
+  german: { confirm: "Bestatigen", back: "Zuruck" },
+  portuguese: { confirm: "Confirmar", back: "Voltar" },
+};
+
+const namePrompts: Record<string, string> = {
+  english: "Last step! Send a name for your coach (or send any message to skip and keep \"PITI\"):",
+  italian: "Ultimo passo! Invia un nome per il tuo coach (o invia un messaggio per saltare e tenere \"PITI\"):",
+  spanish: "Ultimo paso! Envia un nombre para tu entrenador (o envia un mensaje para saltar y mantener \"PITI\"):",
+  french: "Derniere etape ! Envoyez un nom pour votre coach (ou envoyez un message pour garder \"PITI\") :",
+  german: "Letzter Schritt! Sende einen Namen fur deinen Trainer (oder sende eine Nachricht um \"PITI\" zu behalten):",
+  portuguese: "Ultimo passo! Envie um nome para seu treinador (ou envie uma mensagem para manter \"PITI\"):",
+};
+
+function buildCharacterKeyboard(lang: string) {
+  const labels = characterLabels[lang] || characterLabels.english;
+  return [
     [
-      { text: "Balanced Coach", callback_data: "setchar_default" },
-      { text: "Drill Sergeant", callback_data: "setchar_drill-sergeant" },
+      { text: labels["default"], callback_data: "setchar_default" },
+      { text: labels["drill-sergeant"], callback_data: "setchar_drill-sergeant" },
     ],
     [
-      { text: "Best Friend", callback_data: "setchar_best-friend" },
-      { text: "The Scientist", callback_data: "setchar_scientist" },
+      { text: labels["best-friend"], callback_data: "setchar_best-friend" },
+      { text: labels["scientist"], callback_data: "setchar_scientist" },
     ],
     [
-      { text: "Zen Master", callback_data: "setchar_zen-master" },
-      { text: "Hype Coach", callback_data: "setchar_hype-coach" },
+      { text: labels["zen-master"], callback_data: "setchar_zen-master" },
+      { text: labels["hype-coach"], callback_data: "setchar_hype-coach" },
     ],
   ];
+}
 
-  const characterPrompts: Record<string, string> = {
-    english: "Now choose your coach's personality:",
-    italian: "Ora scegli la personalita' del tuo coach:",
-    spanish: "Ahora elige la personalidad de tu entrenador:",
-    french: "Maintenant choisissez la personnalite de votre coach :",
-    german: "Wahle jetzt die Personlichkeit deines Trainers:",
-    portuguese: "Agora escolha a personalidade do seu treinador:",
-  };
-
-  const namePrompts: Record<string, string> = {
-    english: "Last step! Send a name for your coach (or send any message to skip and keep \"PITI\"):",
-    italian: "Ultimo passo! Invia un nome per il tuo coach (o invia un messaggio per saltare e tenere \"PITI\"):",
-    spanish: "Ultimo paso! Envia un nombre para tu entrenador (o envia un mensaje para saltar y mantener \"PITI\"):",
-    french: "Derniere etape ! Envoyez un nom pour votre coach (ou envoyez un message pour garder \"PITI\") :",
-    german: "Letzter Schritt! Sende einen Namen fur deinen Trainer (oder sende eine Nachricht um \"PITI\" zu behalten):",
-    portuguese: "Ultimo passo! Envie um nome para seu treinador (ou envie uma mensagem para manter \"PITI\"):",
-  };
-
-  // Track users in onboarding name step (telegramId -> timestamp)
-  const pendingOnboardingName = new Map<number, number>();
-  const ONBOARDING_NAME_TTL_MS = 120_000;
+// Track users in onboarding name step (telegramId -> timestamp)
+const pendingOnboardingName = new Map<number, number>();
+const ONBOARDING_NAME_TTL_MS = 120_000;
 
 export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
   // Handle language selection callback — validate against whitelist
@@ -75,20 +149,56 @@ export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
     await ctx.editMessageText(`${name} selected!`);
 
     // Show character picker as next onboarding step
-    const charPrompt = characterPrompts[language] || characterPrompts.english;
+    const charPrompt = characterPickerPrompts[language] || characterPickerPrompts.english;
     await ctx.reply(charPrompt, {
-      reply_markup: { inline_keyboard: CHARACTER_INLINE_KEYBOARD },
+      reply_markup: { inline_keyboard: buildCharacterKeyboard(language) },
     });
   });
 
-  // Handle character selection callback
+  // Handle character selection callback — show preview with description
   bot.action(/^setchar_(.+)$/, async (ctx: any) => {
     const telegramId = ctx.from?.id;
     if (!telegramId) return;
 
-    const character = ctx.match[1];
+    const character = ctx.match[1] as AgentCharacter;
     if (!AGENT_CHARACTER_SET.has(character)) {
       logger.warn("Invalid character callback", { telegramId, character });
+      await ctx.answerCbQuery("Invalid character");
+      return;
+    }
+
+    const lang = await dispatcher.getUserLanguage(telegramId);
+    const labels = characterLabels[lang] || characterLabels.english;
+    const descs = characterDescriptions[lang] || characterDescriptions.english;
+    const ct = confirmTexts[lang] || confirmTexts.english;
+
+    const label = labels[character] || AGENT_CHARACTER_LABELS[character];
+    const description = descs[character];
+
+    await ctx.answerCbQuery(label);
+    await ctx.editMessageText(
+      `<b>${escapeHtml(label)}</b>\n\n${escapeHtml(description)}`,
+      {
+        parse_mode: "HTML",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: ct.confirm, callback_data: `confirmchar_${character}` },
+              { text: ct.back, callback_data: "backchar" },
+            ],
+          ],
+        },
+      }
+    );
+  });
+
+  // Handle character confirmation — actually save the choice
+  bot.action(/^confirmchar_(.+)$/, async (ctx: any) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const character = ctx.match[1] as AgentCharacter;
+    if (!AGENT_CHARACTER_SET.has(character)) {
       await ctx.answerCbQuery("Invalid character");
       return;
     }
@@ -99,15 +209,31 @@ export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
       return;
     }
 
-    const label = AGENT_CHARACTER_LABELS[character as AgentCharacter] || character;
+    const lang = await dispatcher.getUserLanguage(telegramId);
+    const labels = characterLabels[lang] || characterLabels.english;
+    const label = labels[character] || AGENT_CHARACTER_LABELS[character];
+
     await ctx.answerCbQuery(label);
-    await ctx.editMessageText(`Coach personality: <b>${label}</b>`, { parse_mode: "HTML" });
+    await ctx.editMessageText(`Coach: <b>${escapeHtml(label)}</b>`, { parse_mode: "HTML" });
 
     // Show name prompt as next onboarding step
-    const lang = await dispatcher.getUserLanguage(telegramId);
     const namePrompt = namePrompts[lang] || namePrompts.english;
     pendingOnboardingName.set(telegramId, Date.now());
     await ctx.reply(namePrompt);
+  });
+
+  // Handle back button — return to character picker
+  bot.action("backchar", async (ctx: any) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const lang = await dispatcher.getUserLanguage(telegramId);
+    const charPrompt = characterPickerPrompts[lang] || characterPickerPrompts.english;
+
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(charPrompt, {
+      reply_markup: { inline_keyboard: buildCharacterKeyboard(lang) },
+    });
   });
 
   // Handle text messages

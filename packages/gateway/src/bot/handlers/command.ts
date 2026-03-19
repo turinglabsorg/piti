@@ -199,26 +199,7 @@ export function registerCommandHandlers(
   });
 
   // /character — choose agent personality
-  const CHARACTER_KEYBOARD = {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: "Balanced Coach", callback_data: "setchar_default" },
-          { text: "Drill Sergeant", callback_data: "setchar_drill-sergeant" },
-        ],
-        [
-          { text: "Best Friend", callback_data: "setchar_best-friend" },
-          { text: "The Scientist", callback_data: "setchar_scientist" },
-        ],
-        [
-          { text: "Zen Master", callback_data: "setchar_zen-master" },
-          { text: "Hype Coach", callback_data: "setchar_hype-coach" },
-        ],
-      ],
-    },
-  };
-
-  const characterDescriptions: Record<string, string> = {
+  const characterPickerPrompts: Record<string, string> = {
     english: "Choose your coach's personality:",
     italian: "Scegli la personalita' del tuo coach:",
     spanish: "Elige la personalidad de tu entrenador:",
@@ -227,21 +208,46 @@ export function registerCommandHandlers(
     portuguese: "Escolha a personalidade do seu treinador:",
   };
 
+  const characterLabelsByLang: Record<string, Record<string, string>> = {
+    english: { "default": "Balanced Coach", "drill-sergeant": "Drill Sergeant", "best-friend": "Best Friend", "scientist": "The Scientist", "zen-master": "Zen Master", "hype-coach": "Hype Coach" },
+    italian: { "default": "Coach Equilibrato", "drill-sergeant": "Sergente Istruttore", "best-friend": "Migliore Amico", "scientist": "Lo Scienziato", "zen-master": "Maestro Zen", "hype-coach": "Coach Carico" },
+    spanish: { "default": "Coach Equilibrado", "drill-sergeant": "Sargento Instructor", "best-friend": "Mejor Amigo", "scientist": "El Cientifico", "zen-master": "Maestro Zen", "hype-coach": "Coach Motivador" },
+    french: { "default": "Coach Equilibre", "drill-sergeant": "Sergent Instructeur", "best-friend": "Meilleur Ami", "scientist": "Le Scientifique", "zen-master": "Maitre Zen", "hype-coach": "Coach Motive" },
+    german: { "default": "Ausgeglichener Trainer", "drill-sergeant": "Drill-Sergeant", "best-friend": "Bester Freund", "scientist": "Der Wissenschaftler", "zen-master": "Zen-Meister", "hype-coach": "Hype-Trainer" },
+    portuguese: { "default": "Coach Equilibrado", "drill-sergeant": "Sargento Instrutor", "best-friend": "Melhor Amigo", "scientist": "O Cientista", "zen-master": "Mestre Zen", "hype-coach": "Coach Motivador" },
+  };
+
   bot.command("character", async (ctx: Context) => {
     const telegramId = ctx.from?.id;
     if (!telegramId) return;
     const lang = await getUserLang(db, telegramId);
-    const prompt = characterDescriptions[lang] || characterDescriptions.english;
+    const prompt = characterPickerPrompts[lang] || characterPickerPrompts.english;
+    const labels = characterLabelsByLang[lang] || characterLabelsByLang.english;
 
     // Show current character
     const user = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
     const profile = (user.length > 0 ? user[0].profile : {}) as Record<string, unknown>;
     const current = (profile.agentCharacter as AgentCharacter) || "default";
-    const currentLabel = AGENT_CHARACTER_LABELS[current] || "Balanced Coach";
+    const currentLabel = labels[current] || AGENT_CHARACTER_LABELS[current] || "Balanced Coach";
 
     await ctx.reply(`${prompt}\n\nCurrent: <b>${escapeHtml(currentLabel)}</b>`, {
       parse_mode: "HTML",
-      ...CHARACTER_KEYBOARD,
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: labels["default"], callback_data: "setchar_default" },
+            { text: labels["drill-sergeant"], callback_data: "setchar_drill-sergeant" },
+          ],
+          [
+            { text: labels["best-friend"], callback_data: "setchar_best-friend" },
+            { text: labels["scientist"], callback_data: "setchar_scientist" },
+          ],
+          [
+            { text: labels["zen-master"], callback_data: "setchar_zen-master" },
+            { text: labels["hype-coach"], callback_data: "setchar_hype-coach" },
+          ],
+        ],
+      },
     } as any);
   });
 
