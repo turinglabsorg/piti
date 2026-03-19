@@ -816,13 +816,13 @@ export function registerCommandHandlers(
   });
 
   // /redeem — redeem a coupon code
-  const redeemTranslations: Record<string, { prompt: string; success: string; invalid: string; exhausted: string; already: string; error: string }> = {
-    english: { prompt: "Enter your coupon code:", success: "Coupon redeemed! {credits} credits added. Total: {total}", invalid: "Invalid coupon code.", exhausted: "This coupon has been fully redeemed.", already: "You have already used this coupon.", error: "Could not redeem coupon. Try again later." },
-    italian: { prompt: "Inserisci il codice coupon:", success: "Coupon riscattato! {credits} crediti aggiunti. Totale: {total}", invalid: "Codice coupon non valido.", exhausted: "Questo coupon è stato completamente utilizzato.", already: "Hai già utilizzato questo coupon.", error: "Impossibile riscattare il coupon. Riprova più tardi." },
-    spanish: { prompt: "Ingresa tu código de cupón:", success: "Cupón canjeado! {credits} créditos añadidos. Total: {total}", invalid: "Código de cupón inválido.", exhausted: "Este cupón ya fue completamente canjeado.", already: "Ya has utilizado este cupón.", error: "No se pudo canjear el cupón. Inténtalo más tarde." },
-    french: { prompt: "Entrez votre code coupon :", success: "Coupon utilisé ! {credits} crédits ajoutés. Total : {total}", invalid: "Code coupon invalide.", exhausted: "Ce coupon a été entièrement utilisé.", already: "Vous avez déjà utilisé ce coupon.", error: "Impossible d'utiliser le coupon. Réessayez plus tard." },
-    german: { prompt: "Gib deinen Gutscheincode ein:", success: "Gutschein eingelöst! {credits} Credits hinzugefügt. Gesamt: {total}", invalid: "Ungültiger Gutscheincode.", exhausted: "Dieser Gutschein wurde vollständig eingelöst.", already: "Du hast diesen Gutschein bereits verwendet.", error: "Gutschein konnte nicht eingelöst werden. Versuche es später erneut." },
-    portuguese: { prompt: "Insira seu código de cupom:", success: "Cupom resgatado! {credits} créditos adicionados. Total: {total}", invalid: "Código de cupom inválido.", exhausted: "Este cupom já foi totalmente utilizado.", already: "Você já utilizou este cupom.", error: "Não foi possível resgatar o cupom. Tente novamente mais tarde." },
+  const redeemTranslations: Record<string, { prompt: string; success: string; invalid: string; exhausted: string; already: string; subscription: string; error: string }> = {
+    english: { prompt: "Enter your coupon code:", success: "Coupon redeemed! {credits} credits added. Total: {total}", invalid: "Invalid coupon code.", exhausted: "This coupon has been fully redeemed.", already: "You have already used this coupon.", subscription: "This coupon requires an active subscription.", error: "Could not redeem coupon. Try again later." },
+    italian: { prompt: "Inserisci il codice coupon:", success: "Coupon riscattato! {credits} crediti aggiunti. Totale: {total}", invalid: "Codice coupon non valido.", exhausted: "Questo coupon è stato completamente utilizzato.", already: "Hai già utilizzato questo coupon.", subscription: "Questo coupon richiede un abbonamento attivo.", error: "Impossibile riscattare il coupon. Riprova più tardi." },
+    spanish: { prompt: "Ingresa tu código de cupón:", success: "Cupón canjeado! {credits} créditos añadidos. Total: {total}", invalid: "Código de cupón inválido.", exhausted: "Este cupón ya fue completamente canjeado.", already: "Ya has utilizado este cupón.", subscription: "Este cupon requiere una suscripcion activa.", error: "No se pudo canjear el cupón. Inténtalo más tarde." },
+    french: { prompt: "Entrez votre code coupon :", success: "Coupon utilisé ! {credits} crédits ajoutés. Total : {total}", invalid: "Code coupon invalide.", exhausted: "Ce coupon a été entièrement utilisé.", already: "Vous avez déjà utilisé ce coupon.", subscription: "Ce coupon necessite un abonnement actif.", error: "Impossible d'utiliser le coupon. Réessayez plus tard." },
+    german: { prompt: "Gib deinen Gutscheincode ein:", success: "Gutschein eingelöst! {credits} Credits hinzugefügt. Gesamt: {total}", invalid: "Ungültiger Gutscheincode.", exhausted: "Dieser Gutschein wurde vollständig eingelöst.", already: "Du hast diesen Gutschein bereits verwendet.", subscription: "Dieser Gutschein erfordert ein aktives Abonnement.", error: "Gutschein konnte nicht eingelöst werden. Versuche es später erneut." },
+    portuguese: { prompt: "Insira seu código de cupom:", success: "Cupom resgatado! {credits} créditos adicionados. Total: {total}", invalid: "Código de cupom inválido.", exhausted: "Este cupom já foi totalmente utilizado.", already: "Você já utilizou este cupom.", subscription: "Este cupom requer uma assinatura ativa.", error: "Não foi possível resgatar o cupom. Tente novamente mais tarde." },
   };
 
   // Track users waiting to enter a coupon code (with timestamp for TTL)
@@ -895,6 +895,7 @@ export function registerCommandHandlers(
         const errorMap: Record<string, string> = {
           invalid_code: t.invalid,
           coupon_exhausted: t.exhausted,
+          subscription_required: t.subscription,
           already_redeemed: t.already,
         };
         await ctx.reply(errorMap[data?.error || ""] || t.error);
