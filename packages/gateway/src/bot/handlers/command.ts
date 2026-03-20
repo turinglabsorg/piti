@@ -181,8 +181,8 @@ export function registerCommandHandlers(
     await ctx.reply(
       "PITI Commands:\n\n" +
         "/language - Change language\n" +
-        "/character - Choose your coach personality\n" +
-        "/name - Set your coach's name\n" +
+        "/character - Choose your agent's personality\n" +
+        "/name - Set your agent's name\n" +
         "/profile - View your fitness profile\n" +
         "/subscription - Manage your plan\n" +
         "/credits - Check credit balance\n" +
@@ -202,12 +202,12 @@ export function registerCommandHandlers(
 
   // /character — choose agent personality
   const characterPickerPrompts: Record<string, string> = {
-    english: "Choose your coach's personality:",
-    italian: "Scegli la personalita' del tuo coach:",
-    spanish: "Elige la personalidad de tu entrenador:",
-    french: "Choisissez la personnalite de votre coach :",
-    german: "Wahle die Personlichkeit deines Trainers:",
-    portuguese: "Escolha a personalidade do seu treinador:",
+    english: "Choose your agent's personality:",
+    italian: "Scegli la personalita' del tuo agente:",
+    spanish: "Elige la personalidad de tu agente:",
+    french: "Choisissez la personnalite de votre agent :",
+    german: "Wahle die Personlichkeit deines Agenten:",
+    portuguese: "Escolha a personalidade do seu agente:",
   };
 
   bot.command("character", async (ctx: Context) => {
@@ -299,21 +299,21 @@ export function registerCommandHandlers(
   const PENDING_NAME_TTL_MS = 60_000;
 
   const namePrompts: Record<string, string> = {
-    english: "What should I call your coach? Send a name (max 30 characters):",
-    italian: "Come vuoi chiamare il tuo coach? Invia un nome (max 30 caratteri):",
-    spanish: "Como quieres llamar a tu entrenador? Envia un nombre (max 30 caracteres):",
-    french: "Comment voulez-vous appeler votre coach ? Envoyez un nom (max 30 caracteres) :",
-    german: "Wie soll dein Trainer heissen? Sende einen Namen (max 30 Zeichen):",
-    portuguese: "Como voce quer chamar seu treinador? Envie um nome (max 30 caracteres):",
+    english: "What should I call your agent? Send a name (max 30 characters):",
+    italian: "Come vuoi chiamare il tuo agente? Invia un nome (max 30 caratteri):",
+    spanish: "Como quieres llamar a tu agente? Envia un nombre (max 30 caracteres):",
+    french: "Comment voulez-vous appeler votre agent ? Envoyez un nom (max 30 caracteres) :",
+    german: "Wie soll dein Agent heissen? Sende einen Namen (max 30 Zeichen):",
+    portuguese: "Como voce quer chamar seu agente? Envie um nome (max 30 caracteres):",
   };
 
   const nameConfirms: Record<string, string> = {
-    english: "Your coach is now called <b>{name}</b>!",
-    italian: "Il tuo coach ora si chiama <b>{name}</b>!",
-    spanish: "Tu entrenador ahora se llama <b>{name}</b>!",
-    french: "Votre coach s'appelle maintenant <b>{name}</b> !",
-    german: "Dein Trainer heisst jetzt <b>{name}</b>!",
-    portuguese: "Seu treinador agora se chama <b>{name}</b>!",
+    english: "Your agent is now called <b>{name}</b>!",
+    italian: "Il tuo agente ora si chiama <b>{name}</b>!",
+    spanish: "Tu agente ahora se llama <b>{name}</b>!",
+    french: "Votre agent s'appelle maintenant <b>{name}</b> !",
+    german: "Dein Agent heisst jetzt <b>{name}</b>!",
+    portuguese: "Seu agente agora se chama <b>{name}</b>!",
   };
 
   bot.command("name", async (ctx: Context) => {
@@ -482,7 +482,7 @@ export function registerCommandHandlers(
 
     let msg = `<b>Your Profile</b>\n`;
     msg += `Language: ${escapeHtml(user[0].language)}\n`;
-    msg += `Coach: <b>${escapeHtml(agentName)}</b> (${escapeHtml(charLabel)})\n\n`;
+    msg += `Agent: <b>${escapeHtml(agentName)}</b> (${escapeHtml(charLabel)})\n\n`;
 
     for (const [cat, items] of Object.entries(groups)) {
       const label = categoryLabels[cat] || escapeHtml(cat);
@@ -806,12 +806,12 @@ export function registerCommandHandlers(
 
   // /reset — confirmation first
   const resetTranslations: Record<string, { confirm: string; yes: string; no: string; done: string; cancelled: string }> = {
-    english: { confirm: "Are you sure? This will delete your conversation history AND all memories. Your coach settings will be kept.", yes: "Yes, reset everything", no: "Cancel", done: "All data cleared. Fresh start!", cancelled: "Cancelled." },
-    italian: { confirm: "Sei sicuro? Verra' cancellata la cronologia delle conversazioni E tutti i ricordi. Le impostazioni del coach saranno mantenute.", yes: "Si, resetta tutto", no: "Annulla", done: "Tutti i dati cancellati. Si riparte da zero!", cancelled: "Annullato." },
-    spanish: { confirm: "Estas seguro? Se borrara el historial de conversaciones Y todos los recuerdos. La configuracion del coach se mantendra.", yes: "Si, resetear todo", no: "Cancelar", done: "Todos los datos borrados. Nuevo comienzo!", cancelled: "Cancelado." },
-    french: { confirm: "Etes-vous sur ? L'historique des conversations ET tous les souvenirs seront supprimes. Les parametres du coach seront conserves.", yes: "Oui, tout reinitialiser", no: "Annuler", done: "Toutes les donnees effacees. Nouveau depart !", cancelled: "Annule." },
-    german: { confirm: "Bist du sicher? Der Gesprachsverlauf UND alle Erinnerungen werden geloscht. Deine Trainer-Einstellungen bleiben erhalten.", yes: "Ja, alles zurucksetzen", no: "Abbrechen", done: "Alle Daten geloscht. Neustart!", cancelled: "Abgebrochen." },
-    portuguese: { confirm: "Tem certeza? O historico de conversas E todas as memorias serao deletados. As configuracoes do coach serao mantidas.", yes: "Sim, resetar tudo", no: "Cancelar", done: "Todos os dados apagados. Novo comeco!", cancelled: "Cancelado." },
+    english: { confirm: "Are you sure? This will delete your conversation history AND all memories. Your settings will be kept.", yes: "Yes, reset everything", no: "Cancel", done: "All data cleared. Fresh start!", cancelled: "Cancelled." },
+    italian: { confirm: "Sei sicuro? Verra' cancellata la cronologia delle conversazioni E tutti i ricordi. Le tue impostazioni saranno mantenute.", yes: "Si, resetta tutto", no: "Annulla", done: "Tutti i dati cancellati. Si riparte da zero!", cancelled: "Annullato." },
+    spanish: { confirm: "Estas seguro? Se borrara el historial de conversaciones Y todos los recuerdos. Tus ajustes se mantendran.", yes: "Si, resetear todo", no: "Cancelar", done: "Todos los datos borrados. Nuevo comienzo!", cancelled: "Cancelado." },
+    french: { confirm: "Etes-vous sur ? L'historique des conversations ET tous les souvenirs seront supprimes. Vos parametres seront conserves.", yes: "Oui, tout reinitialiser", no: "Annuler", done: "Toutes les donnees effacees. Nouveau depart !", cancelled: "Annule." },
+    german: { confirm: "Bist du sicher? Der Gesprachsverlauf UND alle Erinnerungen werden geloscht. Deine Einstellungen bleiben erhalten.", yes: "Ja, alles zurucksetzen", no: "Abbrechen", done: "Alle Daten geloscht. Neustart!", cancelled: "Abgebrochen." },
+    portuguese: { confirm: "Tem certeza? O historico de conversas E todas as memorias serao deletados. Suas configuracoes serao mantidas.", yes: "Sim, resetar tudo", no: "Cancelar", done: "Todos os dados apagados. Novo comeco!", cancelled: "Cancelado." },
   };
 
   bot.command("reset", async (ctx: Context) => {

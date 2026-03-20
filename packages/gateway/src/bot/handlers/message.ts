@@ -13,12 +13,12 @@ function escapeHtml(str: string): string {
 
 
 const characterPickerPrompts: Record<string, string> = {
-  english: "Now choose your coach's personality:",
-  italian: "Ora scegli la personalita' del tuo coach:",
-  spanish: "Ahora elige la personalidad de tu entrenador:",
-  french: "Maintenant choisissez la personnalite de votre coach :",
-  german: "Wahle jetzt die Personlichkeit deines Trainers:",
-  portuguese: "Agora escolha a personalidade do seu treinador:",
+  english: "Now choose your agent's personality:",
+  italian: "Ora scegli la personalita' del tuo agente:",
+  spanish: "Ahora elige la personalidad de tu agente:",
+  french: "Maintenant choisissez la personnalite de votre agent :",
+  german: "Wahle jetzt die Personlichkeit deines Agenten:",
+  portuguese: "Agora escolha a personalidade do seu agente:",
 };
 
 const confirmTexts: Record<string, { confirm: string; back: string }> = {
@@ -31,12 +31,12 @@ const confirmTexts: Record<string, { confirm: string; back: string }> = {
 };
 
 const namePrompts: Record<string, string> = {
-  english: "Last step! Send a name for your coach (or send any message to skip and keep \"PITI\"):",
-  italian: "Ultimo passo! Invia un nome per il tuo coach (o invia un messaggio per saltare e tenere \"PITI\"):",
-  spanish: "Ultimo paso! Envia un nombre para tu entrenador (o envia un mensaje para saltar y mantener \"PITI\"):",
-  french: "Derniere etape ! Envoyez un nom pour votre coach (ou envoyez un message pour garder \"PITI\") :",
-  german: "Letzter Schritt! Sende einen Namen fur deinen Trainer (oder sende eine Nachricht um \"PITI\" zu behalten):",
-  portuguese: "Ultimo passo! Envie um nome para seu treinador (ou envie uma mensagem para manter \"PITI\"):",
+  english: "Last step! Send a name for your agent (or send any message to skip and keep \"PITI\"):",
+  italian: "Ultimo passo! Invia un nome per il tuo agente (o invia un messaggio per saltare e tenere \"PITI\"):",
+  spanish: "Ultimo paso! Envia un nombre para tu agente (o envia un mensaje para saltar y mantener \"PITI\"):",
+  french: "Derniere etape ! Envoyez un nom pour votre agent (ou envoyez un message pour garder \"PITI\") :",
+  german: "Letzter Schritt! Sende einen Namen fur deinen Agenten (oder sende eine Nachricht um \"PITI\" zu behalten):",
+  portuguese: "Ultimo passo! Envie um nome para seu agente (ou envie uma mensagem para manter \"PITI\"):",
 };
 
 function buildCharacterKeyboard(lang: string) {
@@ -154,7 +154,7 @@ export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
     const label = labels[character] || AGENT_CHARACTER_LABELS[character];
 
     await ctx.answerCbQuery(label);
-    await ctx.editMessageText(`Coach: <b>${escapeHtml(label)}</b>`, { parse_mode: "HTML" });
+    await ctx.editMessageText(`Personality: <b>${escapeHtml(label)}</b>`, { parse_mode: "HTML" });
 
     // Show name prompt as next onboarding step
     const namePrompt = namePrompts[lang] || namePrompts.english;
@@ -193,12 +193,12 @@ export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
         await dispatcher.setUserAgentName(telegramId, trimmed);
         const lang = await dispatcher.getUserLanguage(telegramId);
         const confirmMsgs: Record<string, string> = {
-          english: `Your coach is now called <b>${escapeHtml(trimmed)}</b>! Start chatting!`,
-          italian: `Il tuo coach ora si chiama <b>${escapeHtml(trimmed)}</b>! Inizia a chattare!`,
-          spanish: `Tu entrenador ahora se llama <b>${escapeHtml(trimmed)}</b>! Empieza a chatear!`,
-          french: `Votre coach s'appelle maintenant <b>${escapeHtml(trimmed)}</b> ! Commencez a discuter !`,
-          german: `Dein Trainer heisst jetzt <b>${escapeHtml(trimmed)}</b>! Fang an zu chatten!`,
-          portuguese: `Seu treinador agora se chama <b>${escapeHtml(trimmed)}</b>! Comece a conversar!`,
+          english: `Your agent is now called <b>${escapeHtml(trimmed)}</b>! Start chatting!`,
+          italian: `Il tuo agente ora si chiama <b>${escapeHtml(trimmed)}</b>! Inizia a chattare!`,
+          spanish: `Tu agente ahora se llama <b>${escapeHtml(trimmed)}</b>! Empieza a chatear!`,
+          french: `Votre agent s'appelle maintenant <b>${escapeHtml(trimmed)}</b> ! Commencez a discuter !`,
+          german: `Dein Agent heisst jetzt <b>${escapeHtml(trimmed)}</b>! Fang an zu chatten!`,
+          portuguese: `Seu agente agora se chama <b>${escapeHtml(trimmed)}</b>! Comece a conversar!`,
         };
         await ctx.reply(confirmMsgs[lang] || confirmMsgs.english, { parse_mode: "HTML" });
         return;
