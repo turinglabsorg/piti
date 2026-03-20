@@ -806,12 +806,12 @@ export function registerCommandHandlers(
 
   // /reset — confirmation first
   const resetTranslations: Record<string, { confirm: string; yes: string; no: string; done: string; cancelled: string }> = {
-    english: { confirm: "Are you sure you want to clear your conversation history? Your memories will be preserved.", yes: "Yes, clear", no: "Cancel", done: "Conversation history cleared.", cancelled: "Cancelled." },
-    italian: { confirm: "Sei sicuro di voler cancellare la cronologia delle conversazioni? I tuoi ricordi saranno preservati.", yes: "Sì, cancella", no: "Annulla", done: "Cronologia cancellata.", cancelled: "Annullato." },
-    spanish: { confirm: "¿Estás seguro de que quieres borrar el historial de conversaciones? Tus recuerdos se conservarán.", yes: "Sí, borrar", no: "Cancelar", done: "Historial borrado.", cancelled: "Cancelado." },
-    french: { confirm: "Êtes-vous sûr de vouloir effacer l'historique des conversations ? Vos souvenirs seront préservés.", yes: "Oui, effacer", no: "Annuler", done: "Historique effacé.", cancelled: "Annulé." },
-    german: { confirm: "Bist du sicher, dass du den Gesprächsverlauf löschen willst? Deine Erinnerungen bleiben erhalten.", yes: "Ja, löschen", no: "Abbrechen", done: "Verlauf gelöscht.", cancelled: "Abgebrochen." },
-    portuguese: { confirm: "Tem certeza que deseja limpar o histórico de conversas? Suas memórias serão preservadas.", yes: "Sim, limpar", no: "Cancelar", done: "Histórico limpo.", cancelled: "Cancelado." },
+    english: { confirm: "Are you sure? This will delete your conversation history AND all memories. Your coach settings will be kept.", yes: "Yes, reset everything", no: "Cancel", done: "All data cleared. Fresh start!", cancelled: "Cancelled." },
+    italian: { confirm: "Sei sicuro? Verra' cancellata la cronologia delle conversazioni E tutti i ricordi. Le impostazioni del coach saranno mantenute.", yes: "Si, resetta tutto", no: "Annulla", done: "Tutti i dati cancellati. Si riparte da zero!", cancelled: "Annullato." },
+    spanish: { confirm: "Estas seguro? Se borrara el historial de conversaciones Y todos los recuerdos. La configuracion del coach se mantendra.", yes: "Si, resetear todo", no: "Cancelar", done: "Todos los datos borrados. Nuevo comienzo!", cancelled: "Cancelado." },
+    french: { confirm: "Etes-vous sur ? L'historique des conversations ET tous les souvenirs seront supprimes. Les parametres du coach seront conserves.", yes: "Oui, tout reinitialiser", no: "Annuler", done: "Toutes les donnees effacees. Nouveau depart !", cancelled: "Annule." },
+    german: { confirm: "Bist du sicher? Der Gesprachsverlauf UND alle Erinnerungen werden geloscht. Deine Trainer-Einstellungen bleiben erhalten.", yes: "Ja, alles zurucksetzen", no: "Abbrechen", done: "Alle Daten geloscht. Neustart!", cancelled: "Abgebrochen." },
+    portuguese: { confirm: "Tem certeza? O historico de conversas E todas as memorias serao deletados. As configuracoes do coach serao mantidas.", yes: "Sim, resetar tudo", no: "Cancelar", done: "Todos os dados apagados. Novo comeco!", cancelled: "Cancelado." },
   };
 
   bot.command("reset", async (ctx: Context) => {
