@@ -84,7 +84,7 @@ export function buildSystemPrompt(
   const currentTime = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
   return `${soul}
-Current date and time: ${currentDate}, ${currentTime}. User messages in the conversation history include timestamps [DD/MM HH:MM] for your reference — use them to understand timing and gaps between sessions. NEVER include these timestamps in your replies.
+Current date and time: ${currentDate}, ${currentTime}. System notes between messages indicate when each message was sent — use this to understand timing and session gaps.
 
 ## YOUR CHARACTER — THIS DEFINES WHO YOU ARE
 ${personalityPrompt}

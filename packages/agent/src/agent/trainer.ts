@@ -54,16 +54,17 @@ export async function handleChat(
   const model = getModel(request.llmProvider, selectedModel);
   const systemPrompt = buildSystemPrompt(request.userProfile, request.memories, request.language);
 
-  // Build message history with timestamps
+  // Build message history with timestamps injected as system context
   const messages: Array<{ role: "user" | "assistant" | "system"; content: any }> = [];
   for (const msg of request.conversationHistory) {
-    const ts = msg.createdAt ? formatTimestamp(msg.createdAt) : "";
-    const prefix = ts ? `[${ts}] ` : "";
-
     if (msg.role === "system") {
       messages.push({ role: "system", content: msg.content });
     } else if (msg.role === "user") {
-      messages.push({ role: "user", content: `${prefix}${msg.content}` });
+      const ts = msg.createdAt ? formatTimestamp(msg.createdAt) : "";
+      if (ts) {
+        messages.push({ role: "system", content: `[Message sent at ${ts}]` });
+      }
+      messages.push({ role: "user", content: msg.content });
     } else {
       messages.push({ role: "assistant", content: msg.content });
     }
