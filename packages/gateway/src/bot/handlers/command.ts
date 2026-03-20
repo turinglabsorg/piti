@@ -1,9 +1,16 @@
 import type { Context } from "telegraf";
 import { eq, sql, desc } from "drizzle-orm";
+import { readFileSync } from "fs";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 import type { Database } from "../../db/client.js";
 import { users, messages, memories, tokenUsage, mcpCalls } from "../../db/schema.js";
 import { AGENT_CHARACTER_LABELS, type AgentCharacter } from "@piti/shared";
 import { getLabels } from "../agentConfig.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const PITI_VERSION = JSON.parse(readFileSync(resolve(__dirname, "../../../../package.json"), "utf-8")).version;
 
 const creditsTranslations: Record<string, Record<string, string>> = {
   english: { title: "Your Credits", plan: "Plan", remaining: "Credits remaining", costs: "Credit costs", simple: "Simple question", detailed: "Detailed plan", vision: "Photo/video analysis", search: "Web search", credit: "credit", credits: "credits" },
@@ -543,7 +550,7 @@ export function registerCommandHandlers(
       .where(eq(mcpCalls.userId, user[0].id))
       .groupBy(mcpCalls.server, mcpCalls.tool);
 
-    let msg = `<b>PITI Status</b>\n\n`;
+    let msg = `<b>PITI Status</b> v${PITI_VERSION}\n\n`;
     msg += `<b>Language:</b> ${escapeHtml(user[0].language)}\n\n`;
 
     msg += `<b>Token Usage:</b>\n`;
