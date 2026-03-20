@@ -23,4 +23,5 @@ export type MemoryCategory =
   | "routine"
   | "nutrition"
   | "health"
-  | "personal";
+  | "personal"
+  | "recap";

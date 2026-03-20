@@ -1,5 +1,5 @@
 import type { Context } from "telegraf";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, desc } from "drizzle-orm";
 import type { Database } from "../../db/client.js";
 import { users, messages, memories, tokenUsage, mcpCalls } from "../../db/schema.js";
 import { AGENT_CHARACTER_LABELS, type AgentCharacter } from "@piti/shared";
@@ -189,6 +189,7 @@ export function registerCommandHandlers(
         "/referral - Invite friends & earn credits\n" +
         "/redeem - Redeem a coupon code\n" +
         "/status - View agent status\n" +
+        "/forget - Delete memories\n" +
         "/reset - Clear conversation history\n" +
         "/help - Show this message"
     );
@@ -241,6 +242,55 @@ export function registerCommandHandlers(
         ],
       },
     } as any);
+  });
+
+  // Forward declarations for /forget (text handler must be registered before /name and /redeem handlers)
+  const forgetTranslations: Record<string, { title: string; empty: string; prompt: string; deleted: string; confirmAll: string; yes: string; no: string; allDeleted: string; cancelled: string; invalid: string }> = {
+    english: { title: "Your Memories", empty: "You have no memories stored.", prompt: "Reply with a number to delete that memory, or use /forget all to delete everything.", deleted: "Memory deleted.", confirmAll: "Are you sure you want to delete ALL your memories? This cannot be undone.", yes: "Yes, delete all", no: "Cancel", allDeleted: "All memories deleted.", cancelled: "Cancelled.", invalid: "Invalid selection." },
+    italian: { title: "I tuoi Ricordi", empty: "Non hai ricordi salvati.", prompt: "Rispondi con un numero per eliminare quel ricordo, o usa /forget all per eliminare tutto.", deleted: "Ricordo eliminato.", confirmAll: "Sei sicuro di voler eliminare TUTTI i tuoi ricordi? Non si puo' annullare.", yes: "Si, elimina tutto", no: "Annulla", allDeleted: "Tutti i ricordi eliminati.", cancelled: "Annullato.", invalid: "Selezione non valida." },
+    spanish: { title: "Tus Recuerdos", empty: "No tienes recuerdos guardados.", prompt: "Responde con un numero para eliminar ese recuerdo, o usa /forget all para eliminar todo.", deleted: "Recuerdo eliminado.", confirmAll: "Estas seguro de querer eliminar TODOS tus recuerdos? No se puede deshacer.", yes: "Si, eliminar todo", no: "Cancelar", allDeleted: "Todos los recuerdos eliminados.", cancelled: "Cancelado.", invalid: "Seleccion no valida." },
+    french: { title: "Vos Souvenirs", empty: "Vous n'avez aucun souvenir enregistre.", prompt: "Repondez avec un numero pour supprimer ce souvenir, ou utilisez /forget all pour tout supprimer.", deleted: "Souvenir supprime.", confirmAll: "Etes-vous sur de vouloir supprimer TOUS vos souvenirs ? Cette action est irreversible.", yes: "Oui, tout supprimer", no: "Annuler", allDeleted: "Tous les souvenirs supprimes.", cancelled: "Annule.", invalid: "Selection invalide." },
+    german: { title: "Deine Erinnerungen", empty: "Du hast keine gespeicherten Erinnerungen.", prompt: "Antworte mit einer Nummer um die Erinnerung zu loschen, oder nutze /forget all um alles zu loschen.", deleted: "Erinnerung geloscht.", confirmAll: "Bist du sicher, dass du ALLE Erinnerungen loschen willst? Dies kann nicht ruckgangig gemacht werden.", yes: "Ja, alles loschen", no: "Abbrechen", allDeleted: "Alle Erinnerungen geloscht.", cancelled: "Abgebrochen.", invalid: "Ungultige Auswahl." },
+    portuguese: { title: "Suas Memorias", empty: "Voce nao tem memorias armazenadas.", prompt: "Responda com um numero para deletar essa memoria, ou use /forget all para deletar tudo.", deleted: "Memoria deletada.", confirmAll: "Tem certeza que deseja deletar TODAS as suas memorias? Isso nao pode ser desfeito.", yes: "Sim, deletar tudo", no: "Cancelar", allDeleted: "Todas as memorias deletadas.", cancelled: "Cancelado.", invalid: "Selecao invalida." },
+  };
+
+  const pendingForget = new Map<number, { timestamp: number; memoryIds: number[] }>();
+  const PENDING_FORGET_TTL_MS = 120_000;
+
+  // Handle text input for forget number selection (registered before name/redeem handlers)
+  bot.on("text", async (ctx: any, next: () => Promise<void>) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return next();
+
+    const pending = pendingForget.get(telegramId);
+    if (!pending) return next();
+
+    if (Date.now() - pending.timestamp > PENDING_FORGET_TTL_MS) {
+      pendingForget.delete(telegramId);
+      return next();
+    }
+
+    const text = ((ctx.message as any)?.text || "").trim();
+    if (!text || text.startsWith("/")) {
+      pendingForget.delete(telegramId);
+      return next();
+    }
+
+    const num = parseInt(text, 10);
+    const lang = await getUserLang(db, telegramId);
+    const t = forgetTranslations[lang] || forgetTranslations.english;
+
+    if (isNaN(num) || num < 1 || num > pending.memoryIds.length) {
+      pendingForget.delete(telegramId);
+      await ctx.reply(t.invalid);
+      return;
+    }
+
+    const memoryId = pending.memoryIds[num - 1];
+    pendingForget.delete(telegramId);
+
+    await db.delete(memories).where(eq(memories.id, memoryId));
+    await ctx.reply(t.deleted);
   });
 
   // /name — set agent name
@@ -421,6 +471,7 @@ export function registerCommandHandlers(
       nutrition: "Nutrition",
       health: "Health",
       preference: "Preferences",
+      recap: "Recaps",
     };
 
     const profile = (user[0].profile || {}) as Record<string, unknown>;
@@ -803,6 +854,87 @@ export function registerCommandHandlers(
 
     const lang = await getUserLang(db, telegramId);
     const t = resetTranslations[lang] || resetTranslations.english;
+    await ctx.answerCbQuery(t.cancelled);
+    await ctx.editMessageText(t.cancelled);
+  });
+
+  // /forget — delete memories (translations and pendingForget declared above, before name handler)
+  bot.command("forget", async (ctx: Context) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const lang = await getUserLang(db, telegramId);
+    const t = forgetTranslations[lang] || forgetTranslations.english;
+
+    const text = (ctx.message as any)?.text || "";
+    const arg = text.split(" ").slice(1).join(" ").trim().toLowerCase();
+
+    const user = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
+    if (user.length === 0) {
+      await ctx.reply("Send me a message first to get started!");
+      return;
+    }
+
+    if (arg === "all") {
+      await ctx.reply(t.confirmAll, {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: t.yes, callback_data: "forget_all_yes" },
+              { text: t.no, callback_data: "forget_all_no" },
+            ],
+          ],
+        },
+      } as any);
+      return;
+    }
+
+    const userMemories = await db
+      .select()
+      .from(memories)
+      .where(eq(memories.userId, user[0].id))
+      .orderBy(desc(memories.updatedAt))
+      .limit(20);
+
+    if (userMemories.length === 0) {
+      await ctx.reply(t.empty);
+      return;
+    }
+
+    const memoryIds = userMemories.map((m) => m.id);
+    pendingForget.set(telegramId, { timestamp: Date.now(), memoryIds });
+
+    let msg = `<b>${t.title}</b>\n\n`;
+    userMemories.forEach((m, i) => {
+      msg += `<b>${i + 1}.</b> [${escapeHtml(m.category)}] ${escapeHtml(m.content)}\n`;
+    });
+    msg += `\n${t.prompt}`;
+
+    await ctx.reply(msg, { parse_mode: "HTML" });
+  });
+
+  // Forget all confirmation callbacks
+  bot.action("forget_all_yes", async (ctx: any) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const user = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
+    if (user.length === 0) return;
+
+    await db.delete(memories).where(eq(memories.userId, user[0].id));
+
+    const lang = user[0].language;
+    const t = forgetTranslations[lang] || forgetTranslations.english;
+    await ctx.answerCbQuery(t.allDeleted);
+    await ctx.editMessageText(t.allDeleted);
+  });
+
+  bot.action("forget_all_no", async (ctx: any) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const lang = await getUserLang(db, telegramId);
+    const t = forgetTranslations[lang] || forgetTranslations.english;
     await ctx.answerCbQuery(t.cancelled);
     await ctx.editMessageText(t.cancelled);
   });

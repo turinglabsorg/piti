@@ -14,6 +14,7 @@ import { McpManager } from "./orchestrator/mcpManager.js";
 import { startApiServer } from "./api/server.js";
 import { BillingClient } from "./billing/client.js";
 import { initEmbeddings } from "./embeddings.js";
+import { RecapService } from "./orchestrator/recapService.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const logger = createLogger("gateway");
@@ -159,8 +160,15 @@ async function main() {
   // Launch bot — drop pending updates to avoid 409 conflict with previous instance
   bot.launch({ dropPendingUpdates: true });
 
+  // Create recap service for automated conversation summaries
+  const recapService = new RecapService(
+    db,
+    config.llm.providers.openrouter?.api_key || "",
+    "google/gemini-2.5-flash"
+  );
+
   // Daily date-change scheduler — runs at midnight local time
-  scheduleDailyDateChange(dispatcher);
+  scheduleDailyDateChange(dispatcher, recapService);
 
   // Start local HTTP API if enabled
   if (config.api?.enabled) {
@@ -178,7 +186,7 @@ async function main() {
   logger.info("PITI Gateway started");
 }
 
-function scheduleDailyDateChange(dispatcher: Dispatcher) {
+function scheduleDailyDateChange(dispatcher: Dispatcher, recapService: RecapService) {
   const runAtMidnight = () => {
     const now = new Date();
     const tomorrow = new Date(now);
@@ -196,6 +204,35 @@ function scheduleDailyDateChange(dispatcher: Dispatcher) {
         const content = `[SYSTEM] Today is ${dayName}, ${dateStr}. A new day has started. Consider the user's weekly routine, goals, and schedule when they message you today.`;
         const count = await dispatcher.broadcastSystemMessage(content);
         logger.info("Daily date change broadcast", { date: dateStr, usersNotified: count });
+
+        // Run daily recaps (fire and forget)
+        recapService.runDailyRecaps().then((n) => {
+          logger.info("Daily recaps finished", { usersProcessed: n });
+        }).catch((err) => {
+          logger.error("Daily recaps failed", { error: err });
+        });
+
+        // Run weekly recaps on Mondays (5 min delay)
+        if (today.getDay() === 1) {
+          setTimeout(() => {
+            recapService.runWeeklyRecaps().then((n) => {
+              logger.info("Weekly recaps finished", { usersProcessed: n });
+            }).catch((err) => {
+              logger.error("Weekly recaps failed", { error: err });
+            });
+          }, 5 * 60 * 1000);
+        }
+
+        // Run monthly recaps on the 1st (10 min delay)
+        if (today.getDate() === 1) {
+          setTimeout(() => {
+            recapService.runMonthlyRecaps().then((n) => {
+              logger.info("Monthly recaps finished", { usersProcessed: n });
+            }).catch((err) => {
+              logger.error("Monthly recaps failed", { error: err });
+            });
+          }, 10 * 60 * 1000);
+        }
       } catch (err) {
         logger.error("Daily date change failed", { error: err });
       }
