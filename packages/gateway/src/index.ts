@@ -13,6 +13,7 @@ import { createBot } from "./bot/bot.js";
 import { McpManager } from "./orchestrator/mcpManager.js";
 import { startApiServer } from "./api/server.js";
 import { BillingClient } from "./billing/client.js";
+import { initEmbeddings } from "./embeddings.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const logger = createLogger("gateway");
@@ -56,6 +57,12 @@ async function main() {
   // Load YAML config
   const config = loadConfig();
   logger.info("Config loaded from config.yaml");
+
+  // Initialize embeddings for RAG memory
+  if (config.llm.providers.openrouter?.api_key) {
+    initEmbeddings(config.llm.providers.openrouter.api_key);
+    logger.info("Embeddings initialized (OpenRouter)");
+  }
 
   // Connect to DB
   const db = getDb(config.database.url);

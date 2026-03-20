@@ -1,4 +1,6 @@
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, and } from "drizzle-orm";
+import { cosineDistance, gt } from "drizzle-orm";
+import { embed, embedBatch } from "../embeddings.js";
 import type { Database } from "../db/client.js";
 import { users, messages, memories, tokenUsage, mcpCalls } from "../db/schema.js";
 import { ContainerManager } from "./containerManager.js";
@@ -9,7 +11,7 @@ import type { BillingClient } from "../billing/client.js";
 const logger = createLogger("dispatcher");
 
 const MAX_HISTORY_MESSAGES = 50;
-const MAX_MEMORIES = 10;
+const MAX_MEMORIES = 20;
 
 export interface DispatchResult {
   reply: string;
@@ -70,7 +72,7 @@ export class Dispatcher {
     const history = await this.getConversationHistory(user.id);
 
     // 4. Load relevant memories
-    const userMemories = await this.getMemories(user.id);
+    const userMemories = await this.getMemories(user.id, messageText);
 
     // 5. Build agent request
     const request: AgentRequest = {
@@ -274,7 +276,45 @@ export class Dispatcher {
     }));
   }
 
-  private async getMemories(userId: number): Promise<Memory[]> {
+  private async getMemories(userId: number, userMessage?: string): Promise<Memory[]> {
+    // Try semantic search if we have a user message to match against
+    if (userMessage) {
+      const queryEmbedding = await embed(userMessage);
+      if (queryEmbedding) {
+        const similarity = sql<number>`1 - (${cosineDistance(memories.embedding, queryEmbedding)})`;
+        const rows = await this.db
+          .select({
+            id: memories.id,
+            userId: memories.userId,
+            content: memories.content,
+            category: memories.category,
+            createdAt: memories.createdAt,
+            updatedAt: memories.updatedAt,
+            similarity,
+          })
+          .from(memories)
+          .where(and(
+            eq(memories.userId, userId),
+            gt(similarity, 0.3) // minimum relevance threshold
+          ))
+          .orderBy(sql`${similarity} DESC`)
+          .limit(MAX_MEMORIES);
+
+        if (rows.length > 0) {
+          logger.info("Semantic memory retrieval", { userId, count: rows.length, topSimilarity: rows[0].similarity });
+          return rows.map((r) => ({
+            id: r.id,
+            userId: r.userId,
+            content: r.content,
+            category: r.category as Memory["category"],
+            createdAt: r.createdAt,
+            updatedAt: r.updatedAt,
+          }));
+        }
+      }
+    }
+
+    // Fallback: recency-based retrieval (for messages without embeddings or when embedding fails)
     const rows = await this.db
       .select()
       .from(memories)
@@ -309,19 +349,52 @@ export class Dispatcher {
   ) {
     if (newMemories.length === 0) return;
 
-    // Deduplicate: check existing memories and skip similar ones
-    const existing = await this.db
-      .select({ content: memories.content })
-      .from(memories)
-      .where(eq(memories.userId, userId));
+    // Generate embeddings for new memories
+    const embeddings = await embedBatch(newMemories.map((m) => m.content));
 
-    const existingSet = new Set(
-      existing.map((m) => m.content.toLowerCase().trim())
-    );
+    // Semantic deduplication: check each new memory against existing ones
+    const unique: { content: string; category: string; embedding: number[] | null }[] = [];
 
-    const unique = newMemories.filter(
-      (m) => !existingSet.has(m.content.toLowerCase().trim())
-    );
+    for (let i = 0; i < newMemories.length; i++) {
+      const m = newMemories[i];
+      const emb = embeddings[i];
+
+      // Try semantic dedup if we have an embedding
+      if (emb) {
+        const similarity = sql<number>`1 - (${cosineDistance(memories.embedding, emb)})`;
+        const similar = await this.db
+          .select({ id: memories.id, content: memories.content, similarity })
+          .from(memories)
+          .where(and(
+            eq(memories.userId, userId),
+            gt(similarity, 0.85) // high threshold = very similar
+          ))
+          .orderBy(sql`${similarity} DESC`)
+          .limit(1);
+
+        if (similar.length > 0) {
+          // Update existing memory instead of creating duplicate
+          await this.db.update(memories).set({
+            content: m.content,
+            category: m.category,
+            embedding: emb,
+            updatedAt: new Date(),
+          }).where(eq(memories.id, similar[0].id));
+          logger.info("Memory updated (semantic dedup)", { userId, oldContent: similar[0].content.slice(0, 50), newContent: m.content.slice(0, 50), similarity: similar[0].similarity });
+          continue;
+        }
+      } else {
+        // Fallback: string dedup
+        const existing = await this.db
+          .select({ content: memories.content })
+          .from(memories)
+          .where(eq(memories.userId, userId));
+        const existingSet = new Set(existing.map((e) => e.content.toLowerCase().trim()));
+        if (existingSet.has(m.content.toLowerCase().trim())) continue;
+      }
+
+      unique.push({ ...m, embedding: emb });
+    }
 
     if (unique.length === 0) {
       logger.info("No new unique memories to save", { userId });
@@ -333,10 +406,11 @@ export class Dispatcher {
         userId,
         content: m.content,
         category: m.category,
+        embedding: m.embedding,
       }))
     );
 
-    logger.info("Memories saved", { userId, count: unique.length, skipped: newMemories.length - unique.length });
+    logger.info("Memories saved", { userId, count: unique.length, withEmbeddings: unique.filter(m => m.embedding).length });
   }
 
   private async saveTokenUsage(
