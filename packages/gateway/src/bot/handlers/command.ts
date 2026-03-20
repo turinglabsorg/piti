@@ -10,7 +10,19 @@ import { getLabels } from "../agentConfig.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const PITI_VERSION = JSON.parse(readFileSync(resolve(__dirname, "../../../../package.json"), "utf-8")).version;
+const PITI_VERSION = (() => {
+  try {
+    // Try multiple paths since __dirname differs between src (tsx) and dist (compiled)
+    const paths = [
+      resolve(__dirname, "../../../../package.json"),
+      resolve(__dirname, "../../../../../package.json"),
+    ];
+    for (const p of paths) {
+      try { return JSON.parse(readFileSync(p, "utf-8")).version; } catch {}
+    }
+  } catch {}
+  return "unknown";
+})();
 
 const creditsTranslations: Record<string, Record<string, string>> = {
   english: { title: "Your Credits", plan: "Plan", remaining: "Credits remaining", costs: "Credit costs", simple: "Simple question", detailed: "Detailed plan", vision: "Photo/video analysis", search: "Web search", credit: "credit", credits: "credits" },
