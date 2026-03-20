@@ -254,6 +254,7 @@ export function registerCommandHandlers(
     portuguese: { title: "Suas Memorias", empty: "Voce nao tem memorias armazenadas.", prompt: "Responda com um numero para deletar essa memoria, ou use /forget all para deletar tudo.", deleted: "Memoria deletada.", confirmAll: "Tem certeza que deseja deletar TODAS as suas memorias? Isso nao pode ser desfeito.", yes: "Sim, deletar tudo", no: "Cancelar", allDeleted: "Todas as memorias deletadas.", cancelled: "Cancelado.", invalid: "Selecao invalida." },
   };
 
+  const FORGET_PAGE_SIZE = 10;
   const pendingForget = new Map<number, { timestamp: number; memoryIds: number[] }>();
   const PENDING_FORGET_TTL_MS = 120_000;
 
@@ -841,6 +842,7 @@ export function registerCommandHandlers(
     if (user.length === 0) return;
 
     await db.delete(messages).where(eq(messages.userId, user[0].id));
+    await db.delete(memories).where(eq(memories.userId, user[0].id));
 
     const lang = user[0].language;
     const t = resetTranslations[lang] || resetTranslations.english;
@@ -858,7 +860,63 @@ export function registerCommandHandlers(
     await ctx.editMessageText(t.cancelled);
   });
 
-  // /forget — delete memories (translations and pendingForget declared above, before name handler)
+  // /forget — delete memories with pagination
+  async function showForgetPage(ctx: any, telegramId: number, userId: number, page: number, editMessage = false) {
+    const lang = await getUserLang(db, telegramId);
+    const t = forgetTranslations[lang] || forgetTranslations.english;
+
+    const allMemories = await db
+      .select()
+      .from(memories)
+      .where(eq(memories.userId, userId))
+      .orderBy(desc(memories.updatedAt));
+
+    if (allMemories.length === 0) {
+      if (editMessage) {
+        await ctx.editMessageText(t.empty);
+      } else {
+        await ctx.reply(t.empty);
+      }
+      return;
+    }
+
+    const totalPages = Math.ceil(allMemories.length / FORGET_PAGE_SIZE);
+    const currentPage = Math.max(0, Math.min(page, totalPages - 1));
+    const start = currentPage * FORGET_PAGE_SIZE;
+    const pageMemories = allMemories.slice(start, start + FORGET_PAGE_SIZE);
+
+    // Store ALL memory IDs so numbers are sequential across pages
+    const memoryIds = allMemories.map((m) => m.id);
+    pendingForget.set(telegramId, { timestamp: Date.now(), memoryIds });
+
+    let msg = `<b>${t.title}</b> (${allMemories.length})\n\n`;
+    pageMemories.forEach((m, i) => {
+      const globalIndex = start + i + 1;
+      msg += `<b>${globalIndex}.</b> [${escapeHtml(m.category)}] ${escapeHtml(m.content)}\n`;
+    });
+    msg += `\nPage ${currentPage + 1}/${totalPages} — ${t.prompt}`;
+
+    // Build pagination buttons
+    const navButtons: { text: string; callback_data: string }[] = [];
+    if (currentPage > 0) {
+      navButtons.push({ text: `< ${currentPage}`, callback_data: `forget_page_${currentPage - 1}` });
+    }
+    if (currentPage < totalPages - 1) {
+      navButtons.push({ text: `${currentPage + 2} >`, callback_data: `forget_page_${currentPage + 1}` });
+    }
+
+    const replyOpts: any = { parse_mode: "HTML" };
+    if (navButtons.length > 0) {
+      replyOpts.reply_markup = { inline_keyboard: [navButtons] };
+    }
+
+    if (editMessage) {
+      await ctx.editMessageText(msg, replyOpts);
+    } else {
+      await ctx.reply(msg, replyOpts);
+    }
+  }
+
   bot.command("forget", async (ctx: Context) => {
     const telegramId = ctx.from?.id;
     if (!telegramId) return;
@@ -889,28 +947,20 @@ export function registerCommandHandlers(
       return;
     }
 
-    const userMemories = await db
-      .select()
-      .from(memories)
-      .where(eq(memories.userId, user[0].id))
-      .orderBy(desc(memories.updatedAt))
-      .limit(20);
+    await showForgetPage(ctx, telegramId, user[0].id, 0);
+  });
 
-    if (userMemories.length === 0) {
-      await ctx.reply(t.empty);
-      return;
-    }
+  // Pagination callback
+  bot.action(/^forget_page_(\d+)$/, async (ctx: any) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
 
-    const memoryIds = userMemories.map((m) => m.id);
-    pendingForget.set(telegramId, { timestamp: Date.now(), memoryIds });
+    const page = parseInt(ctx.match[1], 10);
+    const user = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
+    if (user.length === 0) return;
 
-    let msg = `<b>${t.title}</b>\n\n`;
-    userMemories.forEach((m, i) => {
-      msg += `<b>${i + 1}.</b> [${escapeHtml(m.category)}] ${escapeHtml(m.content)}\n`;
-    });
-    msg += `\n${t.prompt}`;
-
-    await ctx.reply(msg, { parse_mode: "HTML" });
+    await ctx.answerCbQuery();
+    await showForgetPage(ctx, telegramId, user[0].id, page, true);
   });
 
   // Forget all confirmation callbacks
