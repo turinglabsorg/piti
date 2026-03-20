@@ -38,6 +38,9 @@ RUN pnpm install --frozen-lockfile --prod
 COPY --from=builder /app/packages/shared/dist packages/shared/dist
 COPY --from=builder /app/packages/agent/dist packages/agent/dist
 
+# Copy agent prompt files
+COPY agents/ agents/
+
 EXPOSE 3001
 
 CMD ["node", "packages/agent/dist/index.js"]

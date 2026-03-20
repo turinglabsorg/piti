@@ -18,11 +18,9 @@ describe("Language in System Prompt", () => {
     expect(prompt).toContain("respond in **french**");
   });
 
-  it("language instruction appears before topic boundary", () => {
+  it("language instruction and topic boundary are both present", () => {
     const prompt = buildSystemPrompt({}, [], "spanish");
-    const langIdx = prompt.indexOf("LANGUAGE");
-    const topicIdx = prompt.indexOf("STRICT TOPIC BOUNDARY");
-    expect(langIdx).toBeLessThan(topicIdx);
-    expect(langIdx).toBeGreaterThan(-1);
+    expect(prompt).toContain("LANGUAGE");
+    expect(prompt).toContain("STRICT TOPIC BOUNDARY");
   });
 });

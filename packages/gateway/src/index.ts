@@ -24,6 +24,34 @@ function loadConfig(): GatewayConfig {
   return parseYaml(raw) as GatewayConfig;
 }
 
+function startStatusPing(
+  containerManager: ContainerManager,
+  billingUrl: string,
+  apiSecret: string
+) {
+  const ping = async () => {
+    try {
+      const agentCount = await containerManager.getRunningContainerCount();
+      await fetch(`${billingUrl}/status/ping`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-secret": apiSecret,
+        },
+        body: JSON.stringify({ agentCount }),
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch (err) {
+      logger.warn("Status ping failed", { error: err });
+    }
+  };
+
+  // Send initial ping, then every 60s
+  ping();
+  setInterval(ping, 60_000);
+  logger.info("Status ping started (every 60s)");
+}
+
 async function main() {
   // Load YAML config
   const config = loadConfig();
@@ -92,6 +120,11 @@ async function main() {
     });
     dispatcher.setBilling(billing);
     logger.info("Billing enabled", { url: config.billing.url });
+  }
+
+  // Start status ping to billing service
+  if (config.billing?.enabled && config.billing.url) {
+    startStatusPing(containerManager, config.billing.url, config.billing.api_secret);
   }
 
   // Create and start bot

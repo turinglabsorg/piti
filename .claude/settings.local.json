@@ -70,7 +70,17 @@
       "Bash(gcloud services:*)",
       "Bash(openssl rand:*)",
       "Bash(sleep:*)",
-      "Bash(gcloud logging:*)"
+      "Bash(gcloud logging:*)",
+      "Bash(brew list:*)",
+      "Bash(brew info:*)",
+      "Bash(brew install:*)",
+      "Bash(brew:*)",
+      "Bash(chmod:*)",
+      "Bash(osascript:*)",
+      "Bash(~/.claude/hooks/notify-attention.sh)",
+      "Bash(echo \"exit code: $?\")",
+      "Bash(rm -f ~/.claude/hooks/notify-attention.sh)",
+      "Bash(rmdir ~/.claude/hooks)"
     ]
   }
 }

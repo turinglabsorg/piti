@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import type { Database } from "../../db/client.js";
 import { users, messages, memories, tokenUsage, mcpCalls } from "../../db/schema.js";
 import { AGENT_CHARACTER_LABELS, type AgentCharacter } from "@piti/shared";
+import { getLabels } from "../agentConfig.js";
 
 const creditsTranslations: Record<string, Record<string, string>> = {
   english: { title: "Your Credits", plan: "Plan", remaining: "Credits remaining", costs: "Credit costs", simple: "Simple question", detailed: "Detailed plan", vision: "Photo/video analysis", search: "Web search", credit: "credit", credits: "credits" },
@@ -208,21 +209,12 @@ export function registerCommandHandlers(
     portuguese: "Escolha a personalidade do seu treinador:",
   };
 
-  const characterLabelsByLang: Record<string, Record<string, string>> = {
-    english: { "default": "Balanced Coach", "drill-sergeant": "Drill Sergeant", "best-friend": "Best Friend", "scientist": "The Scientist", "zen-master": "Zen Master", "hype-coach": "Hype Coach" },
-    italian: { "default": "Coach Equilibrato", "drill-sergeant": "Sergente Istruttore", "best-friend": "Migliore Amico", "scientist": "Lo Scienziato", "zen-master": "Maestro Zen", "hype-coach": "Coach Carico" },
-    spanish: { "default": "Coach Equilibrado", "drill-sergeant": "Sargento Instructor", "best-friend": "Mejor Amigo", "scientist": "El Cientifico", "zen-master": "Maestro Zen", "hype-coach": "Coach Motivador" },
-    french: { "default": "Coach Equilibre", "drill-sergeant": "Sergent Instructeur", "best-friend": "Meilleur Ami", "scientist": "Le Scientifique", "zen-master": "Maitre Zen", "hype-coach": "Coach Motive" },
-    german: { "default": "Ausgeglichener Trainer", "drill-sergeant": "Drill-Sergeant", "best-friend": "Bester Freund", "scientist": "Der Wissenschaftler", "zen-master": "Zen-Meister", "hype-coach": "Hype-Trainer" },
-    portuguese: { "default": "Coach Equilibrado", "drill-sergeant": "Sargento Instrutor", "best-friend": "Melhor Amigo", "scientist": "O Cientista", "zen-master": "Mestre Zen", "hype-coach": "Coach Motivador" },
-  };
-
   bot.command("character", async (ctx: Context) => {
     const telegramId = ctx.from?.id;
     if (!telegramId) return;
     const lang = await getUserLang(db, telegramId);
     const prompt = characterPickerPrompts[lang] || characterPickerPrompts.english;
-    const labels = characterLabelsByLang[lang] || characterLabelsByLang.english;
+    const labels = getLabels(lang);
 
     // Show current character
     const user = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);

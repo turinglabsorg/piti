@@ -190,6 +190,11 @@ export class ContainerManager {
     return (await response.json()) as AgentResponse;
   }
 
+  async getRunningContainerCount(): Promise<number> {
+    const keys = await this.redis.keys("piti:container:*");
+    return keys.length;
+  }
+
   async destroyContainer(userId: number) {
     const key = `piti:container:${userId}`;
     const data = await this.redis.get(key);
