@@ -90,7 +90,7 @@ export async function handleChat(
       ...(hasTools ? { tools: mcpTools, maxSteps: 5 } : {}),
     });
 
-    const reply = result.text;
+    const reply = stripMetaTags(result.text);
 
     // Track chat token usage
     if (result.usage) {
@@ -151,6 +151,16 @@ function buildMediaMessage(text: string, media: MediaAttachment): any[] {
   }
 
   return parts;
+}
+
+/**
+ * Strip meta-tags (e.g. [Memory]...[/Memory]) that the LLM may
+ * spontaneously include in its response. These are not meant for the user.
+ */
+function stripMetaTags(text: string): string {
+  return text
+    .replace(/\[Memory\][\s\S]*?\[\/Memory\]/gi, "")
+    .trim();
 }
 
 /**
