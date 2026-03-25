@@ -72,18 +72,18 @@ export class ReminderService {
     user: typeof users.$inferSelect
   ) {
     // 1. Insert system message for context
-    const systemContent = `[REMINDER] The user set a reminder: "${reminder.prompt}". Respond to this reminder proactively as if starting a conversation about it.`;
+    const systemContent = `[REMINDER TRIGGERED] The user previously asked to be reminded about: "${reminder.prompt}". This reminder has now fired. You are proactively reaching out to the user — do NOT repeat the reminder text. Instead, act on it: give actionable advice, encouragement, a plan, or whatever is appropriate for the task. Use the user's profile and memories to personalize your message. Be concise and useful.`;
     await this.db.insert(messages).values({
       userId: reminder.userId,
       role: "system",
       content: systemContent,
     });
 
-    // 2. Dispatch to agent — the reminder prompt acts as a user message
+    // 2. Dispatch to agent with a neutral trigger as the "user message"
     //    isReminder=true prevents the agent from creating new reminders (infinite loop)
     const result = await this.dispatcher.dispatch(
       user.telegramId,
-      reminder.prompt,
+      `[reminder: ${reminder.prompt}]`,
       user.username || undefined,
       user.firstName || undefined,
       undefined,
