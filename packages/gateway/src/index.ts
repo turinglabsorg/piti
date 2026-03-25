@@ -177,7 +177,9 @@ async function main() {
   // Start reminder service — checks for due reminders every 60s
   const sendTelegramMessage = async (telegramId: number, text: string) => {
     try {
-      await bot.telegram.sendMessage(telegramId, text, { parse_mode: "HTML" });
+      // Strip [Memory]...[/Memory] tags the LLM may include
+      const clean = text.replace(/\[memory\][\s\S]*?\[\/memory\]/gi, "").trim();
+      await bot.telegram.sendMessage(telegramId, clean || text);
     } catch (err) {
       logger.error("Failed to send reminder message", { telegramId, error: err });
     }

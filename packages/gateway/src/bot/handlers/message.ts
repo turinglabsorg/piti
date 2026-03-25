@@ -392,8 +392,15 @@ async function extractVideoFrames(videoUrl: string, maxFrames = 6): Promise<stri
   }
 }
 
+/** Strip [Memory]...[/Memory] and similar meta-tags the LLM may include */
+function stripMetaTags(text: string): string {
+  return text
+    .replace(/\[memory\][\s\S]*?\[\/memory\]/gi, "")
+    .trim();
+}
+
 async function sendReply(ctx: Context, reply: string) {
-  const html = markdownToTelegramHtml(reply);
+  const html = markdownToTelegramHtml(stripMetaTags(reply));
   const chunks = html.length > 4096 ? splitMessage(html, 4096) : [html];
 
   for (const chunk of chunks) {
