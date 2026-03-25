@@ -9,6 +9,7 @@ import {
   integer,
   index,
   vector,
+  boolean,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -84,4 +85,43 @@ export const memories = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [index("memories_user_id_idx").on(table.userId)]
+);
+
+export const skills = pgTable(
+  "skills",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .references(() => users.id)
+      .notNull(),
+    content: text("content").notNull(),
+    enabled: boolean("enabled").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [index("skills_user_id_idx").on(table.userId)]
+);
+
+export const reminders = pgTable(
+  "reminders",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .references(() => users.id)
+      .notNull(),
+    prompt: text("prompt").notNull(),
+    type: varchar("type", { length: 20 }).notNull(), // "once" | "recurring"
+    cronExpression: varchar("cron_expression", { length: 100 }),
+    scheduledAt: timestamp("scheduled_at"),
+    timezone: varchar("timezone", { length: 50 }).default("UTC").notNull(),
+    enabled: boolean("enabled").default(true).notNull(),
+    lastRunAt: timestamp("last_run_at"),
+    nextRunAt: timestamp("next_run_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("reminders_user_id_idx").on(table.userId),
+    index("reminders_next_run_idx").on(table.nextRunAt),
+  ]
 );

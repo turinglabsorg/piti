@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
 import { resolve, join, dirname } from "path";
 import { fileURLToPath } from "url";
-import type { AgentCharacter, Memory, UserProfile } from "@piti/shared";
+import type { AgentCharacter, Memory, Skill, UserProfile } from "@piti/shared";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -53,7 +53,8 @@ for (const char of KNOWN_CHARACTERS) {
 export function buildSystemPrompt(
   userProfile: UserProfile | Record<string, unknown>,
   memories: Memory[],
-  language: string = "english"
+  language: string = "english",
+  userSkills: Skill[] = []
 ): string {
   // Build clean profile without metadata fields
   const cleanProfile: Record<string, unknown> = {};
@@ -107,6 +108,7 @@ Categories for memories:
 - health: Medical conditions, medications, allergies
 - personal: Name, occupation, lifestyle context relevant to training
 ${profileSection}
+${userSkills.length > 0 ? `\n## User Rules\nThe user has set these custom rules. Follow them in ALL responses:\n${userSkills.map((s, i) => `${i + 1}. ${s.content}`).join("\n")}` : ""}
 ${memoriesSection}
 
 ## Web Search & Sources

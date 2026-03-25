@@ -2,6 +2,8 @@ import { Telegraf, type Context } from "telegraf";
 import type { Database } from "../db/client.js";
 import type { Dispatcher } from "../orchestrator/dispatcher.js";
 import { registerCommandHandlers } from "./handlers/command.js";
+import { registerSkillsHandlers } from "./handlers/skills.js";
+import { registerRemindersHandlers } from "./handlers/reminders.js";
 import { registerMessageHandler } from "./handlers/message.js";
 import { createAuthMiddleware } from "./middleware/auth.js";
 import { createLogger } from "@piti/shared";
@@ -40,7 +42,9 @@ export function createBot(token: string, db: Database, dispatcher: Dispatcher, o
     return next();
   });
 
-  // Register handlers
+  // Register handlers (order matters: skills/reminders text handlers must be before message handler)
+  registerSkillsHandlers(bot, db);
+  registerRemindersHandlers(bot, db);
   registerCommandHandlers(bot, db, {
     mcpBridgeUrl: opts.mcpBridgeUrl,
     billingUrl: opts.billingUrl,

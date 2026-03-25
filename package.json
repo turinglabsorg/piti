@@ -15,5 +15,8 @@
   "devDependencies": {
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "cron-parser": "^5.5.0"
   }
 }

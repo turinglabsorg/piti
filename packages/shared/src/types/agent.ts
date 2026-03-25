@@ -10,12 +10,19 @@ export interface MediaAttachment {
   caption?: string;
 }
 
+export interface Skill {
+  id: number;
+  content: string;
+  enabled: boolean;
+}
+
 export interface AgentRequest {
   userId: number;
   telegramId: number;
   message: string;
   conversationHistory: ChatMessage[];
   memories: Memory[];
+  skills?: Skill[];
   userProfile: UserProfile;
   llmProvider: string;
   llmModel: string;

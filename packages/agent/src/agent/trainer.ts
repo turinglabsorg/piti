@@ -52,7 +52,7 @@ export async function handleChat(
   });
 
   const model = getModel(request.llmProvider, selectedModel);
-  const systemPrompt = buildSystemPrompt(request.userProfile, request.memories, request.language);
+  const systemPrompt = buildSystemPrompt(request.userProfile, request.memories, request.language, request.skills);
 
   // Build message history with timestamps injected as system context
   const messages: Array<{ role: "user" | "assistant" | "system"; content: any }> = [];

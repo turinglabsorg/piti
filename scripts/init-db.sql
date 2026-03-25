@@ -64,3 +64,34 @@ CREATE TABLE IF NOT EXISTS mcp_calls (
 );
 
 CREATE INDEX IF NOT EXISTS mcp_calls_user_id_idx ON mcp_calls(user_id);
+
+-- User-defined skills (custom rules for agent behavior)
+CREATE TABLE IF NOT EXISTS skills (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) NOT NULL,
+  content TEXT NOT NULL,
+  enabled BOOLEAN DEFAULT TRUE NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS skills_user_id_idx ON skills(user_id);
+
+-- Reminders (scheduled agent prompts)
+CREATE TABLE IF NOT EXISTS reminders (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) NOT NULL,
+  prompt TEXT NOT NULL,
+  type VARCHAR(20) NOT NULL,
+  cron_expression VARCHAR(100),
+  scheduled_at TIMESTAMP,
+  timezone VARCHAR(50) DEFAULT 'UTC' NOT NULL,
+  enabled BOOLEAN DEFAULT TRUE NOT NULL,
+  last_run_at TIMESTAMP,
+  next_run_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS reminders_user_id_idx ON reminders(user_id);
+CREATE INDEX IF NOT EXISTS reminders_next_run_idx ON reminders(next_run_at);

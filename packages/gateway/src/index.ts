@@ -15,6 +15,7 @@ import { startApiServer } from "./api/server.js";
 import { BillingClient } from "./billing/client.js";
 import { initEmbeddings } from "./embeddings.js";
 import { RecapService } from "./orchestrator/recapService.js";
+import { ReminderService } from "./orchestrator/reminderService.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const logger = createLogger("gateway");
@@ -145,9 +146,12 @@ async function main() {
   });
 
   // Graceful shutdown
+  let reminderService: ReminderService | null = null;
+
   const shutdown = async () => {
     logger.info("Shutting down...");
     bot.stop("SIGTERM");
+    reminderService?.stop();
     await containerManager.stop();
     redis.disconnect();
     await closeDb();
@@ -169,6 +173,17 @@ async function main() {
 
   // Daily date-change scheduler — runs at midnight local time
   scheduleDailyDateChange(dispatcher, recapService);
+
+  // Start reminder service — checks for due reminders every 60s
+  const sendTelegramMessage = async (telegramId: number, text: string) => {
+    try {
+      await bot.telegram.sendMessage(telegramId, text, { parse_mode: "HTML" });
+    } catch (err) {
+      logger.error("Failed to send reminder message", { telegramId, error: err });
+    }
+  };
+  reminderService = new ReminderService(db, dispatcher, sendTelegramMessage);
+  reminderService.start();
 
   // Start local HTTP API if enabled
   if (config.api?.enabled) {

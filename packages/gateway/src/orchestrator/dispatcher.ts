@@ -2,9 +2,9 @@ import { eq, desc, sql, and } from "drizzle-orm";
 import { cosineDistance, gt } from "drizzle-orm";
 import { embed, embedBatch } from "../embeddings.js";
 import type { Database } from "../db/client.js";
-import { users, messages, memories, tokenUsage, mcpCalls } from "../db/schema.js";
+import { users, messages, memories, tokenUsage, mcpCalls, skills } from "../db/schema.js";
 import { ContainerManager } from "./containerManager.js";
-import type { AgentRequest, AgentResponse, ChatMessage, Memory, MediaAttachment, TokenUsage, McpCall, AgentCharacter } from "@piti/shared";
+import type { AgentRequest, AgentResponse, ChatMessage, Memory, MediaAttachment, TokenUsage, McpCall, AgentCharacter, Skill } from "@piti/shared";
 import { createLogger, SUPPORTED_LANGUAGES_SET, AGENT_CHARACTER_SET } from "@piti/shared";
 import type { BillingClient } from "../billing/client.js";
 
@@ -74,6 +74,9 @@ export class Dispatcher {
     // 4. Load relevant memories
     const userMemories = await this.getMemories(user.id, messageText);
 
+    // 4b. Load user skills
+    const userSkills = await this.getSkills(user.id);
+
     // 5. Build agent request
     const request: AgentRequest = {
       userId: user.id,
@@ -81,6 +84,7 @@ export class Dispatcher {
       message: messageText,
       conversationHistory: history,
       memories: userMemories,
+      skills: userSkills,
       userProfile: (user.profile as Record<string, unknown>) || {},
       llmProvider: user.llmProvider,
       llmModel: user.llmModel,
@@ -329,6 +333,19 @@ export class Dispatcher {
       category: r.category as Memory["category"],
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
+    }));
+  }
+
+  private async getSkills(userId: number): Promise<Skill[]> {
+    const rows = await this.db
+      .select()
+      .from(skills)
+      .where(and(eq(skills.userId, userId), eq(skills.enabled, true)));
+
+    return rows.map((r) => ({
+      id: r.id,
+      content: r.content,
+      enabled: r.enabled,
     }));
   }
 

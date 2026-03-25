@@ -202,7 +202,9 @@ export function registerCommandHandlers(
         "/language - Change language\n" +
         "/character - Choose your agent's personality\n" +
         "/name - Set your agent's name\n" +
-        "/profile - View your fitness profile\n" +
+        "/skills - Manage custom rules for your agent\n" +
+        "/reminders - Manage scheduled reminders\n" +
+        "/profile - View your profile\n" +
         "/subscription - Manage your plan\n" +
         "/credits - Check credit balance\n" +
         "/referral - Invite friends & earn credits\n" +
