@@ -460,16 +460,31 @@ export class Dispatcher {
 
   private async saveReminders(userId: number, newReminders: NewReminder[]) {
     for (const r of newReminders) {
-      const scheduledAt = new Date(Date.now() + r.delayMinutes * 60_000);
-      await this.db.insert(reminders).values({
-        userId,
-        prompt: r.prompt,
-        type: "once",
-        timezone: "UTC",
-        scheduledAt,
-        nextRunAt: scheduledAt,
-      });
-      logger.info("Agent-created reminder saved", { userId, prompt: r.prompt.slice(0, 50), delayMinutes: r.delayMinutes, scheduledAt });
+      if (r.type === "recurring" && r.cronExpression) {
+        const { computeNextRun } = await import("./reminderService.js");
+        const nextRun = computeNextRun(r.cronExpression, "UTC");
+        await this.db.insert(reminders).values({
+          userId,
+          prompt: r.prompt,
+          type: "recurring",
+          cronExpression: r.cronExpression,
+          timezone: "UTC",
+          nextRunAt: nextRun,
+        });
+        logger.info("Agent-created recurring reminder saved", { userId, prompt: r.prompt.slice(0, 50), cronExpression: r.cronExpression, nextRun });
+      } else {
+        const delayMs = (r.delayMinutes || 1) * 60_000;
+        const scheduledAt = new Date(Date.now() + delayMs);
+        await this.db.insert(reminders).values({
+          userId,
+          prompt: r.prompt,
+          type: "once",
+          timezone: "UTC",
+          scheduledAt,
+          nextRunAt: scheduledAt,
+        });
+        logger.info("Agent-created one-shot reminder saved", { userId, prompt: r.prompt.slice(0, 50), delayMinutes: r.delayMinutes, scheduledAt });
+      }
     }
   }
 

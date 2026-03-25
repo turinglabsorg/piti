@@ -85,14 +85,25 @@ export async function handleChat(
     // Built-in reminder tool — allows the agent to create reminders from conversation
     const pendingReminders: NewReminder[] = [];
     const reminderTool = tool({
-      description: "Create a reminder that will send a message to the user after a specified delay. Use this when the user asks to be reminded of something.",
+      description: `Create a reminder or recurring scheduled task. The agent will wake up at the scheduled time, execute the task (including using tools like web search), and send the result to the user.
+
+Examples:
+- "remind me in 5 minutes" → type: "once", delayMinutes: 5
+- "check btc price every hour" → type: "recurring", cronExpression: "0 * * * *"
+- "send me a morning motivation at 7am daily" → type: "recurring", cronExpression: "0 7 * * *"
+- "remind me every Monday at 9am" → type: "recurring", cronExpression: "0 9 * * 1"`,
       parameters: z.object({
-        prompt: z.string().describe("What to remind the user about — written as a clear instruction for the agent"),
-        delayMinutes: z.number().min(1).max(10080).describe("How many minutes from now to send the reminder (max 7 days = 10080)"),
+        prompt: z.string().describe("Clear task description for the agent to act on when the reminder fires — write it as an instruction, e.g. 'Search the current BTC/USD price and report it' or 'Suggest a quick stretching routine'"),
+        type: z.enum(["once", "recurring"]).describe("once = fires once then disables, recurring = repeats on schedule"),
+        delayMinutes: z.number().min(1).max(10080).optional().describe("For type=once: minutes from now (max 7 days = 10080)"),
+        cronExpression: z.string().optional().describe("For type=recurring: cron expression (5-field: minute hour day-of-month month day-of-week). Examples: '0 * * * *' = every hour, '30 8 * * *' = daily at 8:30, '0 9 * * 1' = Mondays at 9:00"),
       }),
-      execute: async ({ prompt, delayMinutes }) => {
-        pendingReminders.push({ prompt, delayMinutes });
-        logger.info("Reminder tool called", { prompt, delayMinutes });
+      execute: async ({ prompt, type, delayMinutes, cronExpression }) => {
+        pendingReminders.push({ prompt, type, delayMinutes, cronExpression });
+        logger.info("Reminder tool called", { prompt, type, delayMinutes, cronExpression });
+        if (type === "recurring" && cronExpression) {
+          return `Recurring task scheduled (${cronExpression}): "${prompt}"`;
+        }
         return `Reminder set: "${prompt}" in ${delayMinutes} minutes.`;
       },
     });

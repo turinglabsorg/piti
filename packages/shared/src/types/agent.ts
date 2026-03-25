@@ -49,7 +49,11 @@ export interface McpCall {
 
 export interface NewReminder {
   prompt: string;
-  delayMinutes: number;
+  type: "once" | "recurring";
+  /** For one-shot: minutes from now */
+  delayMinutes?: number;
+  /** For recurring: cron expression (e.g., "0 * * * *" for every hour) */
+  cronExpression?: string;
 }
 
 export interface AgentResponse {
