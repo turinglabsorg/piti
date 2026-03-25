@@ -32,6 +32,7 @@ const translations: Record<string, Record<string, string>> = {
     prompt: "Reply with a number to manage that reminder.", add: "+ Add Reminder",
     promptAsk: "What should your agent do? Send the prompt:",
     freqAsk: "How often?",
+    tzAsk: "What's your timezone?",
     timeAsk: "What time? Send HH:MM (24h format):",
     dayAsk: "Which day?",
     dateAsk: "When? Pick a preset or send DD/MM/YYYY:",
@@ -49,6 +50,7 @@ const translations: Record<string, Record<string, string>> = {
     prompt: "Rispondi con un numero per gestire quel promemoria.", add: "+ Aggiungi Promemoria",
     promptAsk: "Cosa deve fare il tuo agente? Invia il prompt:",
     freqAsk: "Con che frequenza?",
+    tzAsk: "Qual e' il tuo fuso orario?",
     timeAsk: "A che ora? Invia HH:MM (formato 24h):",
     dayAsk: "Quale giorno?",
     dateAsk: "Quando? Scegli un'opzione o invia GG/MM/AAAA:",
@@ -66,6 +68,7 @@ const translations: Record<string, Record<string, string>> = {
     prompt: "Responde con un numero para gestionar ese recordatorio.", add: "+ Agregar Recordatorio",
     promptAsk: "Que debe hacer tu agente? Envia el prompt:",
     freqAsk: "Con que frecuencia?",
+    tzAsk: "Cual es tu zona horaria?",
     timeAsk: "A que hora? Envia HH:MM (formato 24h):",
     dayAsk: "Que dia?",
     dateAsk: "Cuando? Elige una opcion o envia DD/MM/AAAA:",
@@ -83,6 +86,7 @@ const translations: Record<string, Record<string, string>> = {
     prompt: "Repondez avec un numero pour gerer ce rappel.", add: "+ Ajouter Rappel",
     promptAsk: "Que doit faire votre agent ? Envoyez le prompt :",
     freqAsk: "A quelle frequence ?",
+    tzAsk: "Quel est votre fuseau horaire ?",
     timeAsk: "A quelle heure ? Envoyez HH:MM (format 24h) :",
     dayAsk: "Quel jour ?",
     dateAsk: "Quand ? Choisissez une option ou envoyez JJ/MM/AAAA :",
@@ -100,6 +104,7 @@ const translations: Record<string, Record<string, string>> = {
     prompt: "Antworte mit einer Nummer um die Erinnerung zu verwalten.", add: "+ Erinnerung hinzufugen",
     promptAsk: "Was soll dein Agent tun? Sende den Prompt:",
     freqAsk: "Wie oft?",
+    tzAsk: "Was ist deine Zeitzone?",
     timeAsk: "Um welche Uhrzeit? Sende HH:MM (24h Format):",
     dayAsk: "Welcher Tag?",
     dateAsk: "Wann? Wahle eine Option oder sende TT/MM/JJJJ:",
@@ -117,6 +122,7 @@ const translations: Record<string, Record<string, string>> = {
     prompt: "Responda com um numero para gerenciar esse lembrete.", add: "+ Adicionar Lembrete",
     promptAsk: "O que seu agente deve fazer? Envie o prompt:",
     freqAsk: "Com que frequencia?",
+    tzAsk: "Qual e o seu fuso horario?",
     timeAsk: "Que horas? Envie HH:MM (formato 24h):",
     dayAsk: "Qual dia?",
     dateAsk: "Quando? Escolha uma opcao ou envie DD/MM/AAAA:",
@@ -132,12 +138,14 @@ const translations: Record<string, Record<string, string>> = {
 };
 
 interface ReminderFlowState {
-  step: "prompt" | "time" | "day" | "date";
+  step: "prompt" | "timezone" | "time" | "day" | "date";
   timestamp: number;
   prompt?: string;
   frequency?: "once" | "daily" | "weekly" | "weekdays";
   dayOfWeek?: number;
   timezone: string;
+  hour?: number;
+  minute?: number;
 }
 
 export function registerRemindersHandlers(bot: any, db: Database) {
@@ -217,11 +225,7 @@ export function registerRemindersHandlers(bot: any, db: Database) {
 
         if (flow.frequency === "once") {
           // Ask for date
-          pendingFlow.set(telegramId, { ...flow, step: "date", timestamp: Date.now() });
-          // Store hour/minute temporarily in the flow object
-          (flow as any).hour = hour;
-          (flow as any).minute = minute;
-          pendingFlow.set(telegramId, { ...flow, step: "date", timestamp: Date.now() });
+          pendingFlow.set(telegramId, { ...flow, hour, minute, step: "date", timestamp: Date.now() });
           await ctx.reply(t.dateAsk, {
             reply_markup: {
               inline_keyboard: [
@@ -273,8 +277,8 @@ export function registerRemindersHandlers(bot: any, db: Database) {
         const day = parseInt(dateMatch[1], 10);
         const month = parseInt(dateMatch[2], 10) - 1;
         const year = parseInt(dateMatch[3], 10);
-        const hour = (flow as any).hour || 0;
-        const minute = (flow as any).minute || 0;
+        const hour = flow.hour || 0;
+        const minute = flow.minute || 0;
 
         const scheduledAt = new Date(year, month, day, hour, minute, 0);
         if (isNaN(scheduledAt.getTime()) || scheduledAt <= new Date()) {
@@ -460,6 +464,36 @@ export function registerRemindersHandlers(bot: any, db: Database) {
     await ctx.reply(t.promptAsk);
   });
 
+  // Timezone picker helper
+  function showTimezonePicker(ctx: any, t: Record<string, string>, editMessage = true) {
+    const opts = {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "Europe/Rome", callback_data: "remind_tz_Europe/Rome" },
+            { text: "Europe/London", callback_data: "remind_tz_Europe/London" },
+          ],
+          [
+            { text: "Europe/Berlin", callback_data: "remind_tz_Europe/Berlin" },
+            { text: "Europe/Paris", callback_data: "remind_tz_Europe/Paris" },
+          ],
+          [
+            { text: "US/Eastern", callback_data: "remind_tz_US/Eastern" },
+            { text: "US/Pacific", callback_data: "remind_tz_US/Pacific" },
+          ],
+          [
+            { text: "Asia/Tokyo", callback_data: "remind_tz_Asia/Tokyo" },
+            { text: "UTC", callback_data: "remind_tz_UTC" },
+          ],
+        ],
+      },
+    };
+    if (editMessage) {
+      return ctx.editMessageText(t.tzAsk, opts);
+    }
+    return ctx.reply(t.tzAsk, opts);
+  }
+
   // Frequency selection
   bot.action(/^remind_freq_(once|daily|weekly|weekdays)$/, async (ctx: any) => {
     const telegramId = ctx.from?.id;
@@ -475,7 +509,7 @@ export function registerRemindersHandlers(bot: any, db: Database) {
     await ctx.answerCbQuery();
 
     if (frequency === "weekly") {
-      // Ask for day of week first
+      // Ask for day of week first, then timezone
       pendingFlow.set(telegramId, { ...flow, frequency, step: "day", timestamp: Date.now() });
       await ctx.editMessageText(t.dayAsk, {
         reply_markup: {
@@ -497,12 +531,12 @@ export function registerRemindersHandlers(bot: any, db: Database) {
       return;
     }
 
-    // For once, daily, weekdays — ask for time
-    pendingFlow.set(telegramId, { ...flow, frequency, step: "time", timestamp: Date.now() });
-    await ctx.editMessageText(t.timeAsk);
+    // For once, daily, weekdays — ask for timezone
+    pendingFlow.set(telegramId, { ...flow, frequency, step: "timezone", timestamp: Date.now() });
+    await showTimezonePicker(ctx, t);
   });
 
-  // Day of week selection (for weekly)
+  // Day of week selection (for weekly) → then timezone
   bot.action(/^remind_day_(\d)$/, async (ctx: any) => {
     const telegramId = ctx.from?.id;
     if (!telegramId) return;
@@ -514,7 +548,24 @@ export function registerRemindersHandlers(bot: any, db: Database) {
     const lang = await getUserLang(db, telegramId);
     const t = translations[lang] || translations.english;
 
-    pendingFlow.set(telegramId, { ...flow, dayOfWeek, step: "time", timestamp: Date.now() });
+    pendingFlow.set(telegramId, { ...flow, dayOfWeek, step: "timezone", timestamp: Date.now() });
+    await ctx.answerCbQuery();
+    await showTimezonePicker(ctx, t);
+  });
+
+  // Timezone selection → then time
+  bot.action(/^remind_tz_(.+)$/, async (ctx: any) => {
+    const telegramId = ctx.from?.id;
+    if (!telegramId) return;
+
+    const timezone = ctx.match[1] as string;
+    const flow = pendingFlow.get(telegramId);
+    if (!flow) return;
+
+    const lang = await getUserLang(db, telegramId);
+    const t = translations[lang] || translations.english;
+
+    pendingFlow.set(telegramId, { ...flow, timezone, step: "time", timestamp: Date.now() });
     await ctx.answerCbQuery();
     await ctx.editMessageText(t.timeAsk);
   });
