@@ -1,6 +1,6 @@
-# PITI -- Personal AI Trainer
+# PITI -- Personal Intelligent Tailored Interactions
 
-PITI is an autonomous AI personal trainer that lives on Telegram. It provides expert fitness coaching, nutrition advice, and health guidance through natural conversation, with persistent memory, multi-language support, and vision capabilities for exercise form analysis.
+PITI is a generic, multi-tenant AI agent platform that runs on Telegram. It provides the full infrastructure for deploying autonomous AI agents with persistent memory, multi-language support, vision capabilities, and extensible tool use — all out of the box. The first agent built on PITI is a fitness coach, but the platform is designed to power any domain-specific AI assistant.
 
 Each user gets an isolated Docker container running their own AI agent instance, with conversation history, long-term memories, and token usage tracked independently in PostgreSQL.
 
@@ -8,14 +8,15 @@ Each user gets an isolated Docker container running their own AI agent instance,
 
 - **Multi-user isolation** -- Each user gets a dedicated Docker container, auto-created on first message, auto-destroyed after idle timeout
 - **Two-tier model routing** -- A cheap router model (e.g., Gemini Flash) classifies messages as simple/complex/off-topic, then routes to the appropriate model. Complex queries and media go to a smart model (e.g., Gemini Pro)
-- **Vision capabilities** -- Send photos for form checks, meal analysis, or progress tracking. Send videos and PITI extracts frames with ffmpeg for movement analysis
+- **Vision capabilities** -- Send photos and videos for analysis. Videos are processed with ffmpeg frame extraction for multi-frame understanding
 - **MCP integration** -- Extensible tool system via Model Context Protocol. Ships with DuckDuckGo web search; add new tools with 3 lines of config
-- **Long-term memory** -- Automatically extracts and stores facts about each user (goals, injuries, preferences, PRs) across conversations
+- **Long-term memory** -- Automatically extracts and stores facts about each user (goals, preferences, context) across conversations using RAG with pgvector embeddings
 - **Token usage tracking** -- Per-user, per-model tracking of input/output tokens for chat, classification, and memory extraction
 - **MCP call tracking** -- Every tool call logged with timing, arguments, and server info
-- **Multi-language support** -- Auto-detects user language on first message, supports 11+ languages with per-language refusal messages
-- **Topic enforcement** -- Two-layer guard system (regex heuristics + LLM classification) keeps the bot strictly on fitness/nutrition/health topics
+- **Multi-language support** -- Auto-detects user language on first message, supports 11+ languages with per-language system messages
+- **Configurable topic guard** -- Two-layer guard system (regex heuristics + LLM classification) keeps the agent on-topic for your domain
 - **Local HTTP API** -- REST API for testing and building alternative frontends, with user mapping to share data with Telegram accounts
+- **Domain-agnostic core** -- System prompt, guard rules, and memory categories are configurable — swap the personality and domain without changing the platform
 
 ## Architecture
 
@@ -214,7 +215,7 @@ llm:
 
 **How routing works:** Every incoming message is first classified by the `router_model` (cheap, fast) into one of three categories:
 - **SIMPLE** -- Handled by the `router_model` itself (greetings, basic questions, simple facts)
-- **COMPLEX** -- Escalated to the `smart_model` (workout plans, meal plans, detailed advice)
+- **COMPLEX** -- Escalated to the `smart_model` (detailed plans, in-depth advice, multi-step reasoning)
 - **OFF-TOPIC** -- Rejected with a localized refusal message
 
 Messages with media (photos/videos) always use the `smart_model`.
@@ -254,14 +255,22 @@ See [docs/mcp.md](docs/mcp.md) for detailed MCP documentation, including how to 
 |---------|-------------|
 | `/start` | Welcome message and feature overview |
 | `/help` | List all available commands |
-| `/profile` | View your fitness profile (built from conversation) |
+| `/profile` | View your user profile (built from conversation) |
 | `/provider <name> [model]` | Switch LLM provider and model |
 | `/language <name>` | Set your preferred response language |
-| `/memories` | View what PITI remembers about you |
+| `/memories` | View what the agent remembers about you |
 | `/reset` | Clear conversation history (memories are preserved) |
 | `/status` | View agent status, token usage stats, and MCP service info |
 
 Supported languages: english, italian, french, spanish, german, portuguese, chinese, japanese, korean, russian, arabic.
+
+## Billing
+
+PITI includes a billing client that connects to an external credit-based billing service via HTTP. The commercial billing backend is closed source, but the integration contract is simple and fully documented — you can build your own billing service in any language.
+
+See [docs/billing.md](docs/billing.md) for the full API contract, cost calculation logic, and a minimal example implementation.
+
+Billing is disabled by default (`billing.enabled: false` in `config.yaml`). When disabled, the agent runs with no credit limits and no usage restrictions — all billing checks are skipped entirely. This is the recommended setup for self-hosted or development deployments.
 
 ## HTTP API
 
@@ -276,7 +285,7 @@ curl http://localhost:3000/health
 # Send a message
 curl -X POST http://localhost:3000/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "Create a 3-day workout plan for a beginner"}'
+  -d '{"message": "Hello, what can you help me with?"}'
 
 # Check user status
 curl http://localhost:3000/status/local
@@ -304,6 +313,18 @@ pnpm test
 ```
 
 Tests use Vitest and cover guards, system prompt generation, config validation, auth middleware, language detection, and provider configuration.
+
+## Extending PITI to a New Domain
+
+PITI is designed as a reusable platform. To build a new AI agent on top of it:
+
+1. **System prompt** (`packages/agent/src/agent/systemPrompt.ts`) -- Define your agent's personality, expertise, and instructions
+2. **Guard rules** (`packages/agent/src/agent/guard.ts`) -- Configure topic boundaries (regex patterns + LLM classification prompt)
+3. **Memory categories** -- Adjust categories in the schema to match your domain (e.g., replace fitness-specific ones with your own)
+4. **MCP tools** (`config.yaml`) -- Add domain-specific tools via the MCP bridge
+5. **Bot commands** -- Customize Telegram commands for your use case
+
+The platform handles everything else: container orchestration, memory extraction, RAG search, multi-language support, token tracking, and billing.
 
 ### Project structure
 
@@ -384,7 +405,7 @@ PITI uses PostgreSQL 16 with pgvector. Schema is initialized from `scripts/init-
 |-------|---------|
 | `users` | User profiles, LLM preferences, language settings |
 | `messages` | Conversation history (user + assistant turns) |
-| `memories` | Long-term facts per user, categorized (goal, injury, preference, etc.), with optional vector embedding |
+| `memories` | Long-term facts per user, categorized with optional vector embedding |
 | `token_usage` | Per-call token counts by provider, model, and purpose (chat/classification/memory_extraction) |
 | `mcp_calls` | MCP tool invocations with arguments, timing, and server info |
 
