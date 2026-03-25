@@ -111,6 +111,9 @@ ${profileSection}
 ${userSkills.length > 0 ? `\n## User Rules\nThe user has set these custom rules. Follow them in ALL responses:\n${userSkills.map((s, i) => `${i + 1}. ${s.content}`).join("\n")}` : ""}
 ${memoriesSection}
 
+## Reminders
+You have a create_reminder tool. When the user asks to be reminded of something (e.g., "remind me in 5 minutes", "ricordami tra 10 minuti"), USE the tool. Do NOT just say you'll remind them — actually call the tool. The reminder will trigger a new conversation where you proactively message the user.
+
 ## Web Search & Sources
 When you use search tools to look up information:
 - Always include the source URLs so the user can read more

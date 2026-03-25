@@ -2,9 +2,9 @@ import { eq, desc, sql, and } from "drizzle-orm";
 import { cosineDistance, gt } from "drizzle-orm";
 import { embed, embedBatch } from "../embeddings.js";
 import type { Database } from "../db/client.js";
-import { users, messages, memories, tokenUsage, mcpCalls, skills } from "../db/schema.js";
+import { users, messages, memories, tokenUsage, mcpCalls, skills, reminders } from "../db/schema.js";
 import { ContainerManager } from "./containerManager.js";
-import type { AgentRequest, AgentResponse, ChatMessage, Memory, MediaAttachment, TokenUsage, McpCall, AgentCharacter, Skill } from "@piti/shared";
+import type { AgentRequest, AgentResponse, ChatMessage, Memory, MediaAttachment, TokenUsage, McpCall, AgentCharacter, Skill, NewReminder } from "@piti/shared";
 import { createLogger, SUPPORTED_LANGUAGES_SET, AGENT_CHARACTER_SET } from "@piti/shared";
 import type { BillingClient } from "../billing/client.js";
 
@@ -132,6 +132,11 @@ export class Dispatcher {
     // 10. Save MCP call logs
     if (response.mcpCalls?.length) {
       await this.saveMcpCalls(user.id, response.mcpCalls);
+    }
+
+    // 10b. Create reminders requested by the agent
+    if (response.newReminders?.length) {
+      await this.saveReminders(user.id, response.newReminders);
     }
 
     // 11. Deduct billing credits (if enabled)
@@ -450,6 +455,21 @@ export class Dispatcher {
     const totalIn = usage.reduce((s, u) => s + u.inputTokens, 0);
     const totalOut = usage.reduce((s, u) => s + u.outputTokens, 0);
     logger.info("Token usage saved", { userId, calls: usage.length, totalIn, totalOut });
+  }
+
+  private async saveReminders(userId: number, newReminders: NewReminder[]) {
+    for (const r of newReminders) {
+      const scheduledAt = new Date(Date.now() + r.delayMinutes * 60_000);
+      await this.db.insert(reminders).values({
+        userId,
+        prompt: r.prompt,
+        type: "once",
+        timezone: "UTC",
+        scheduledAt,
+        nextRunAt: scheduledAt,
+      });
+      logger.info("Agent-created reminder saved", { userId, prompt: r.prompt.slice(0, 50), delayMinutes: r.delayMinutes, scheduledAt });
+    }
   }
 
   private async saveMcpCalls(userId: number, calls: McpCall[]) {

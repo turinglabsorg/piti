@@ -47,9 +47,15 @@ export interface McpCall {
   durationMs: number;
 }
 
+export interface NewReminder {
+  prompt: string;
+  delayMinutes: number;
+}
+
 export interface AgentResponse {
   reply: string;
   newMemories?: ExtractedMemory[];
+  newReminders?: NewReminder[];
   tokenUsage?: TokenUsage[];
   mcpCalls?: McpCall[];
 }

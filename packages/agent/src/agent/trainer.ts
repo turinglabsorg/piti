@@ -1,8 +1,9 @@
-import { generateText } from "ai";
+import { generateText, tool } from "ai";
+import { z } from "zod";
 import { getModel } from "../llm/provider.js";
 import { buildSystemPrompt } from "./systemPrompt.js";
 import { isObviouslyOffTopic, getRefusalMessage } from "./guard.js";
-import type { AgentRequest, AgentResponse, ExtractedMemory, MediaAttachment, TokenUsage, UserProfile } from "@piti/shared";
+import type { AgentRequest, AgentResponse, ExtractedMemory, NewReminder, MediaAttachment, TokenUsage, UserProfile } from "@piti/shared";
 import { getMaxTokens } from "@piti/shared";
 import { createLogger } from "@piti/shared";
 
@@ -81,13 +82,29 @@ export async function handleChat(
   }
 
   try {
-    const hasTools = Object.keys(mcpTools).length > 0;
+    // Built-in reminder tool — allows the agent to create reminders from conversation
+    const pendingReminders: NewReminder[] = [];
+    const reminderTool = tool({
+      description: "Create a reminder that will send a message to the user after a specified delay. Use this when the user asks to be reminded of something.",
+      parameters: z.object({
+        prompt: z.string().describe("What to remind the user about — written as a clear instruction for the agent"),
+        delayMinutes: z.number().min(1).max(10080).describe("How many minutes from now to send the reminder (max 7 days = 10080)"),
+      }),
+      execute: async ({ prompt, delayMinutes }) => {
+        pendingReminders.push({ prompt, delayMinutes });
+        logger.info("Reminder tool called", { prompt, delayMinutes });
+        return `Reminder set: "${prompt}" in ${delayMinutes} minutes.`;
+      },
+    });
+
+    const allTools = { ...mcpTools, create_reminder: reminderTool };
     const result = await generateText({
       model,
       system: systemPrompt,
       messages,
       maxTokens: getMaxTokens(selectedModel),
-      ...(hasTools ? { tools: mcpTools, maxSteps: 5 } : {}),
+      tools: allTools,
+      maxSteps: 5,
     });
 
     const reply = stripMetaTags(result.text);
@@ -118,7 +135,12 @@ export async function handleChat(
       allTokenUsage.push(memoryUsage);
     }
 
-    return { reply, newMemories, tokenUsage: allTokenUsage };
+    return {
+      reply,
+      newMemories,
+      newReminders: pendingReminders.length > 0 ? pendingReminders : undefined,
+      tokenUsage: allTokenUsage,
+    };
   } catch (err) {
     logger.error("LLM call failed", { error: err, provider: request.llmProvider, model: selectedModel });
     throw err;
