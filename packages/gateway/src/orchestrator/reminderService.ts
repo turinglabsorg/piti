@@ -80,11 +80,14 @@ export class ReminderService {
     });
 
     // 2. Dispatch to agent — the reminder prompt acts as a user message
+    //    isReminder=true prevents the agent from creating new reminders (infinite loop)
     const result = await this.dispatcher.dispatch(
       user.telegramId,
       reminder.prompt,
       user.username || undefined,
-      user.firstName || undefined
+      user.firstName || undefined,
+      undefined,
+      { isReminder: true }
     );
 
     // 3. Send reply to Telegram

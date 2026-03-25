@@ -53,7 +53,8 @@ export class Dispatcher {
     messageText: string,
     username?: string,
     firstName?: string,
-    media?: MediaAttachment
+    media?: MediaAttachment,
+    opts: { isReminder?: boolean } = {}
   ): Promise<DispatchResult> {
     // 1. Get or create user
     const { user, isNew } = await this.getOrCreateUser(telegramId, username, firstName);
@@ -134,8 +135,8 @@ export class Dispatcher {
       await this.saveMcpCalls(user.id, response.mcpCalls);
     }
 
-    // 10b. Create reminders requested by the agent
-    if (response.newReminders?.length) {
+    // 10b. Create reminders requested by the agent (skip if this dispatch was triggered by a reminder)
+    if (response.newReminders?.length && !opts.isReminder) {
       await this.saveReminders(user.id, response.newReminders);
     }
 
