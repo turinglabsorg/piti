@@ -3,8 +3,10 @@ import type { Dispatcher } from "../../orchestrator/dispatcher.js";
 import type { MediaAttachment } from "@piti/shared";
 import { createLogger, SUPPORTED_LANGUAGES_SET, AGENT_CHARACTER_SET, AGENT_CHARACTER_LABELS, type AgentCharacter } from "@piti/shared";
 import { getLabels, getDescriptions } from "../agentConfig.js";
+import { MessageQueue } from "../messageQueue.js";
 
 const logger = createLogger("message-handler");
+const messageQueue = new MessageQueue();
 
 function escapeHtml(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -180,11 +182,12 @@ export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
   bot.on("text", async (ctx: Context) => {
     const text = (ctx.message as any)?.text;
     const telegramId = ctx.from?.id;
+    const messageId = (ctx.message as any)?.message_id;
 
     if (!text || !telegramId) return;
     if (text.startsWith("/")) return;
 
-    // Check if user is in onboarding name step
+    // Check if user is in onboarding name step (not queued — immediate response)
     const onboardingTs = pendingOnboardingName.get(telegramId);
     if (onboardingTs && Date.now() - onboardingTs < ONBOARDING_NAME_TTL_MS) {
       pendingOnboardingName.delete(telegramId);
@@ -206,7 +209,10 @@ export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
     }
     pendingOnboardingName.delete(telegramId);
 
-    await handleUserMessage(ctx, dispatcher, telegramId, text);
+    // Enqueue message — consecutive messages are processed in order
+    await messageQueue.enqueue(telegramId, messageId, () =>
+      handleUserMessage(ctx, dispatcher, telegramId, text, undefined, messageId)
+    );
   });
 
   // Handle photos
@@ -215,29 +221,32 @@ export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
     if (!telegramId) return;
 
     const msg = ctx.message as any;
+    const messageId = msg.message_id;
     const caption = msg.caption || "Analyze this image.";
     // Telegram sends multiple sizes — take the largest
     const photos = msg.photo;
     const largest = photos[photos.length - 1];
 
-    try {
-      await ctx.sendChatAction("typing");
+    await messageQueue.enqueue(telegramId, messageId, async () => {
+      try {
+        await ctx.sendChatAction("typing");
 
-      const fileLink = await ctx.telegram.getFileLink(largest.file_id);
-      const imageData = await downloadAsBase64(fileLink.href);
+        const fileLink = await ctx.telegram.getFileLink(largest.file_id);
+        const imageData = await downloadAsBase64(fileLink.href);
 
-      const media: MediaAttachment = {
-        type: "image",
-        data: [imageData],
-        mimeType: "image/jpeg",
-        caption,
-      };
+        const media: MediaAttachment = {
+          type: "image",
+          data: [imageData],
+          mimeType: "image/jpeg",
+          caption,
+        };
 
-      await handleUserMessage(ctx, dispatcher, telegramId, caption, media);
-    } catch (err) {
-      logger.error("Error processing photo", { telegramId, error: err });
-      await ctx.reply("Sorry, I couldn't process that image. Please try again.");
-    }
+        await handleUserMessage(ctx, dispatcher, telegramId, caption, media, messageId);
+      } catch (err) {
+        logger.error("Error processing photo", { telegramId, error: err });
+        await ctx.reply("Sorry, I couldn't process that image. Please try again.");
+      }
+    });
   });
 
   // Handle videos and video notes (round videos)
@@ -246,6 +255,7 @@ export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
     if (!telegramId) return;
 
     const msg = ctx.message as any;
+    const messageId = msg.message_id;
     const video = msg.video || msg.video_note;
     const caption = msg.caption || "Analyze this video.";
 
@@ -255,31 +265,33 @@ export function registerMessageHandler(bot: any, dispatcher: Dispatcher) {
       return;
     }
 
-    try {
-      await ctx.sendChatAction("typing");
-      await ctx.reply("🎥 Processing video... extracting frames for analysis.");
+    await messageQueue.enqueue(telegramId, messageId, async () => {
+      try {
+        await ctx.sendChatAction("typing");
+        await ctx.reply("\u{1F3A5} Processing video... extracting frames for analysis.");
 
-      const fileLink = await ctx.telegram.getFileLink(video.file_id);
-      const frames = await extractVideoFrames(fileLink.href);
+        const fileLink = await ctx.telegram.getFileLink(video.file_id);
+        const frames = await extractVideoFrames(fileLink.href);
 
-      if (frames.length === 0) {
-        await ctx.reply("Couldn't extract frames from this video. Try sending a shorter, clearer clip.");
-        return;
+        if (frames.length === 0) {
+          await ctx.reply("Couldn't extract frames from this video. Try sending a shorter, clearer clip.");
+          return;
+        }
+
+        const media: MediaAttachment = {
+          type: "video_frames",
+          data: frames,
+          mimeType: "image/jpeg",
+          caption,
+        };
+
+        logger.info("Video frames extracted", { telegramId, frameCount: frames.length });
+        await handleUserMessage(ctx, dispatcher, telegramId, caption, media, messageId);
+      } catch (err) {
+        logger.error("Error processing video", { telegramId, error: err });
+        await ctx.reply("Sorry, I couldn't process that video. Please try again with a shorter clip.");
       }
-
-      const media: MediaAttachment = {
-        type: "video_frames",
-        data: frames,
-        mimeType: "image/jpeg",
-        caption,
-      };
-
-      logger.info("Video frames extracted", { telegramId, frameCount: frames.length });
-      await handleUserMessage(ctx, dispatcher, telegramId, caption, media);
-    } catch (err) {
-      logger.error("Error processing video", { telegramId, error: err });
-      await ctx.reply("Sorry, I couldn't process that video. Please try again with a shorter clip.");
-    }
+    });
   });
 }
 
@@ -288,7 +300,8 @@ async function handleUserMessage(
   dispatcher: Dispatcher,
   telegramId: number,
   text: string,
-  media?: MediaAttachment
+  media?: MediaAttachment,
+  replyToMessageId?: number
 ) {
   try {
     // Keep typing indicator alive every 4s until response is ready
@@ -310,7 +323,13 @@ async function handleUserMessage(
       clearInterval(typingInterval);
     }
 
-    await sendReply(ctx, result.reply);
+    // Check for duplicate outgoing reply
+    if (messageQueue.isDuplicateReply(telegramId, result.reply)) {
+      logger.warn("Skipping duplicate reply", { telegramId });
+      return;
+    }
+
+    await sendReply(ctx, result.reply, replyToMessageId);
 
     // If new user, show compact language picker
     if (result.isNewUser) {
@@ -399,12 +418,19 @@ function stripMetaTags(text: string): string {
     .trim();
 }
 
-async function sendReply(ctx: Context, reply: string) {
+async function sendReply(ctx: Context, reply: string, replyToMessageId?: number) {
   const html = markdownToTelegramHtml(stripMetaTags(reply));
   const chunks = html.length > 4096 ? splitMessage(html, 4096) : [html];
 
-  for (const chunk of chunks) {
-    await ctx.reply(chunk, { parse_mode: "HTML" }).catch(() =>
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    // Quote the original message only on the first chunk
+    const opts: Record<string, unknown> = { parse_mode: "HTML" };
+    if (i === 0 && replyToMessageId) {
+      opts.reply_parameters = { message_id: replyToMessageId };
+    }
+
+    await ctx.reply(chunk, opts as any).catch(() =>
       ctx.reply(chunk)
     );
   }

@@ -23,22 +23,27 @@ export function createBot(token: string, db: Database, dispatcher: Dispatcher, o
   // Auth middleware (must be first)
   bot.use(createAuthMiddleware(opts.allowedUsers));
 
-  // Rate limiting middleware
-  const lastMessage = new Map<number, number>();
-  const RATE_LIMIT_MS = 2000;
+  // Rate limiting middleware — only block actual floods, let all normal messages through
+  const recentMessages = new Map<number, number[]>();
+  const RATE_WINDOW_MS = 5_000;
+  const RATE_MAX_MESSAGES = 20;
 
   bot.use(async (ctx, next) => {
     const userId = ctx.from?.id;
     if (!userId) return next();
 
     const now = Date.now();
-    const last = lastMessage.get(userId) || 0;
+    const timestamps = (recentMessages.get(userId) ?? []).filter(
+      (t) => now - t < RATE_WINDOW_MS
+    );
 
-    if (now - last < RATE_LIMIT_MS) {
-      return; // Drop message silently
+    if (timestamps.length >= RATE_MAX_MESSAGES) {
+      logger.warn("Rate limit exceeded", { userId, count: timestamps.length });
+      return; // Drop — likely a flood
     }
 
-    lastMessage.set(userId, now);
+    timestamps.push(now);
+    recentMessages.set(userId, timestamps);
     return next();
   });
 
