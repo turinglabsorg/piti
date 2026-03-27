@@ -1,6 +1,6 @@
 {
   "name": "piti",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "scripts": {
     "dev:gateway": "pnpm --filter @piti/gateway dev",

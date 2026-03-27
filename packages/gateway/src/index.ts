@@ -161,6 +161,23 @@ async function main() {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
+  // Register bot menu commands visible in Telegram
+  await bot.telegram.setMyCommands([
+    { command: "start", description: "Start the bot" },
+    { command: "help", description: "Show available commands" },
+    { command: "reminders", description: "Manage scheduled reminders" },
+    { command: "skills", description: "Manage custom rules" },
+    { command: "language", description: "Change language" },
+    { command: "character", description: "Choose agent personality" },
+    { command: "name", description: "Set agent name" },
+    { command: "profile", description: "View your profile" },
+    { command: "credits", description: "Check credit balance" },
+    { command: "subscription", description: "Manage plan" },
+    { command: "referral", description: "Invite friends & earn credits" },
+    { command: "forget", description: "Delete memories" },
+    { command: "status", description: "Agent status" },
+  ]);
+
   // Launch bot — drop pending updates to avoid 409 conflict with previous instance
   bot.launch({ dropPendingUpdates: true });
 

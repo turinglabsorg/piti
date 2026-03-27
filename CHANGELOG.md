@@ -2,6 +2,21 @@
 
 All notable changes to PITI are documented here.
 
+## [0.6.0] - 2026-03-27
+
+### Reminders & Custom Rules
+- **Scheduled reminders**: One-shot or recurring (daily, weekly, weekdays) with timezone support. ReminderService polls every 60s, fires due reminders through the dispatcher, and sends the agent's reply to Telegram.
+- **Natural language reminders**: Say "remind me in 30 minutes" in conversation — the agent calls its native `create_reminder` tool and the gateway creates the DB record automatically.
+- **`/reminders` command**: Multi-step creation flow with frequency picker, timezone selector, and time input. Paginated list with toggle/edit/delete buttons. Max 20 reminders per user.
+- **User-defined skills**: Custom rules that shape agent behavior, injected as "User Rules" in system prompt. `/skills` command with full CRUD and pagination.
+
+### Reliability
+- **Per-user message queue**: Consecutive messages are now processed in serial order. Each message waits for the previous to complete, so the agent always sees updated conversation history.
+- **Duplicate message guardrail**: Incoming messages are deduplicated by Telegram `message_id` (handles retries). Outgoing replies are deduplicated by hash within a 60s window.
+- **Reply quoting**: Bot now quotes the original user message when replying via `reply_parameters`.
+- **Rate limiter relaxed**: From 1 msg/2s (which dropped consecutive messages) to 20 msg/5s (anti-flood only).
+- **Telegram bot menu**: `setMyCommands` registers all commands so they appear in the Telegram menu button.
+
 ## [0.5.0] - 2026-03-20
 
 ### RAG Memory & Automated Recaps
