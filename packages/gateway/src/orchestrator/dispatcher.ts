@@ -461,6 +461,25 @@ export class Dispatcher {
   private async saveReminders(userId: number, newReminders: NewReminder[]) {
     for (const r of newReminders) {
       if (r.type === "recurring" && r.cronExpression) {
+        // Dedup: skip if an enabled recurring reminder with the same cron already exists
+        const existing = await this.db
+          .select({ id: reminders.id })
+          .from(reminders)
+          .where(
+            and(
+              eq(reminders.userId, userId),
+              eq(reminders.type, "recurring"),
+              eq(reminders.cronExpression, r.cronExpression),
+              eq(reminders.enabled, true),
+            ),
+          )
+          .limit(1);
+
+        if (existing.length > 0) {
+          logger.info("Skipping duplicate recurring reminder", { userId, cronExpression: r.cronExpression, existingId: existing[0].id });
+          continue;
+        }
+
         const { computeNextRun } = await import("./reminderService.js");
         const nextRun = computeNextRun(r.cronExpression, "UTC");
         await this.db.insert(reminders).values({
@@ -473,6 +492,25 @@ export class Dispatcher {
         });
         logger.info("Agent-created recurring reminder saved", { userId, prompt: r.prompt.slice(0, 50), cronExpression: r.cronExpression, nextRun });
       } else {
+        // Dedup: skip if an enabled one-shot reminder with the same prompt is still pending
+        const existing = await this.db
+          .select({ id: reminders.id })
+          .from(reminders)
+          .where(
+            and(
+              eq(reminders.userId, userId),
+              eq(reminders.type, "once"),
+              eq(reminders.prompt, r.prompt),
+              eq(reminders.enabled, true),
+            ),
+          )
+          .limit(1);
+
+        if (existing.length > 0) {
+          logger.info("Skipping duplicate one-shot reminder", { userId, prompt: r.prompt.slice(0, 50), existingId: existing[0].id });
+          continue;
+        }
+
         const delayMs = (r.delayMinutes || 1) * 60_000;
         const scheduledAt = new Date(Date.now() + delayMs);
         await this.db.insert(reminders).values({
