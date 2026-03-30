@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { CronExpressionParser } from "cron-parser";
 import type { Database } from "../../db/client.js";
 import { users, reminders } from "../../db/schema.js";
@@ -359,7 +359,7 @@ export function registerRemindersHandlers(bot: any, db: Database) {
     const allReminders = await db
       .select()
       .from(reminders)
-      .where(eq(reminders.userId, userId))
+      .where(and(eq(reminders.userId, userId), eq(reminders.enabled, true)))
       .orderBy(reminders.createdAt);
 
     if (allReminders.length === 0) {
@@ -388,7 +388,7 @@ export function registerRemindersHandlers(bot: any, db: Database) {
     let msg = `<b>${t.title}</b> (${allReminders.length})\n\n`;
     pageReminders.forEach((r, i) => {
       const globalIndex = start + i + 1;
-      const status = r.enabled ? "ON" : (r.type === "once" && !r.enabled ? "DONE" : "OFF");
+      const status = "ON";
       const schedule = formatSchedule(r, t);
       msg += `<b>${globalIndex}.</b> [${status}] ${schedule} — "${escapeHtml(r.prompt.slice(0, 50))}${r.prompt.length > 50 ? "..." : ""}"\n`;
     });
@@ -453,7 +453,7 @@ export function registerRemindersHandlers(bot: any, db: Database) {
     const userId = await getUserId(db, telegramId);
     if (!userId) return;
 
-    const count = await db.select({ id: reminders.id }).from(reminders).where(eq(reminders.userId, userId));
+    const count = await db.select({ id: reminders.id }).from(reminders).where(and(eq(reminders.userId, userId), eq(reminders.enabled, true)));
     if (count.length >= MAX_REMINDERS) {
       await ctx.answerCbQuery(t.maxReached);
       return;
