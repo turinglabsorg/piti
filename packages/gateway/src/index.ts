@@ -92,6 +92,9 @@ async function main() {
   if (config.llm.providers.openrouter?.api_key) {
     agentEnvVars.OPENROUTER_API_KEY = config.llm.providers.openrouter.api_key;
   }
+  if (config.llm.providers.ollama?.api_key) {
+    agentEnvVars.OLLAMA_API_KEY = config.llm.providers.ollama.api_key;
+  }
 
   // Pass MCP bridge URL to agent containers
   if (mcpBridgeUrl) {

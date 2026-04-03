@@ -1,4 +1,4 @@
-export const LLM_PROVIDERS = ["claude", "kimi", "openrouter"] as const;
+export const LLM_PROVIDERS = ["claude", "kimi", "openrouter", "ollama"] as const;
 export type LLMProvider = (typeof LLM_PROVIDERS)[number];
 
 export const LLM_MODELS: Record<LLMProvider, string[]> = {
@@ -9,6 +9,12 @@ export const LLM_MODELS: Record<LLMProvider, string[]> = {
     "google/gemini-2.5-flash",
     "google/gemini-2.5-pro",
     "openai/gpt-4o",
+  ],
+  ollama: [
+    "gemma3:27b",
+    "gemma3:12b",
+    "qwen3-vl:235b-instruct",
+    "kimi-k2.5",
   ],
 };
 
@@ -25,6 +31,11 @@ export const MODEL_MAX_TOKENS: Record<string, number> = {
   "google/gemini-2.5-flash": 65536,
   "google/gemini-2.5-pro": 65536,
   "openai/gpt-4o": 16384,
+  // Ollama Cloud
+  "gemma3:27b": 8192,
+  "gemma3:12b": 8192,
+  "qwen3-vl:235b-instruct": 32768,
+  "kimi-k2.5": 32768,
 };
 
 export const DEFAULT_MAX_TOKENS = 8192;

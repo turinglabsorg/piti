@@ -30,6 +30,15 @@ export function getModel(provider: string, model: string): LanguageModel {
       return openrouter(model);
     }
 
+    case "ollama": {
+      const ollama = createOpenAI({
+        apiKey: process.env.OLLAMA_API_KEY,
+        baseURL: "https://ollama.com/v1",
+        compatibility: "compatible",
+      });
+      return ollama(model);
+    }
+
     default:
       throw new Error(`Unknown LLM provider: ${provider}`);
   }

@@ -27,6 +27,8 @@ llm:
       api_key: ""
     kimi:
       api_key: ""
+    ollama:
+      api_key: ""  # Ollama Cloud API key (https://ollama.com/settings/keys)
 
 billing:
   enabled: false

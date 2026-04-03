@@ -55,30 +55,59 @@ export async function handleChat(
   const model = getModel(request.llmProvider, selectedModel);
   const systemPrompt = buildSystemPrompt(request.userProfile, request.memories, request.language, request.skills);
 
-  // Build message history with timestamps injected as system context
-  const messages: Array<{ role: "user" | "assistant" | "system"; content: any }> = [];
+  // Build message history — enforce strict user/assistant alternation
+  // (required by Ollama: no system mid-conversation, no consecutive same-role)
+  const rawMessages: Array<{ role: "user" | "assistant"; content: any }> = [];
   for (const msg of request.conversationHistory) {
     if (msg.role === "system") {
-      messages.push({ role: "system", content: msg.content });
+      // Merge system context into the next user message
+      const last = rawMessages[rawMessages.length - 1];
+      if (last && last.role === "user") {
+        last.content += `\n[${msg.content}]`;
+      }
+      // Otherwise skip — system prompt is already set separately
     } else if (msg.role === "user") {
       const ts = msg.createdAt ? formatTimestamp(msg.createdAt) : "";
-      if (ts) {
-        messages.push({ role: "system", content: `[Message sent at ${ts}]` });
-      }
-      messages.push({ role: "user", content: msg.content });
+      const prefix = ts ? `[${ts}] ` : "";
+      rawMessages.push({ role: "user", content: prefix + msg.content });
     } else {
-      messages.push({ role: "assistant", content: msg.content });
+      rawMessages.push({ role: "assistant", content: msg.content });
     }
+  }
+
+  // Merge consecutive same-role messages
+  const messages: Array<{ role: "user" | "assistant" | "system"; content: any }> = [];
+  for (const msg of rawMessages) {
+    const last = messages[messages.length - 1];
+    if (last && last.role === msg.role) {
+      last.content += "\n" + msg.content;
+    } else {
+      messages.push({ ...msg });
+    }
+  }
+
+  // Ensure history starts with user (drop leading assistant messages)
+  while (messages.length > 0 && messages[0].role === "assistant") {
+    messages.shift();
   }
 
   // Build current message — with media if present
   if (hasMedia) {
-    messages.push({
-      role: "user",
-      content: buildMediaMessage(request.message, request.media!),
-    });
+    const userMsg = { role: "user" as const, content: buildMediaMessage(request.message, request.media!) };
+    const last = messages[messages.length - 1];
+    if (last && last.role === "user") {
+      last.content += "\n" + request.message;
+      // Can't merge media into text, replace with media message
+      messages.pop();
+    }
+    messages.push(userMsg);
   } else {
-    messages.push({ role: "user", content: request.message });
+    const last = messages[messages.length - 1];
+    if (last && last.role === "user") {
+      last.content += "\n" + request.message;
+    } else {
+      messages.push({ role: "user", content: request.message });
+    }
   }
 
   try {
@@ -404,6 +433,12 @@ function getProviderConfig(provider: string): {
       return {
         baseURL: "https://openrouter.ai/api/v1",
         apiKey: process.env.OPENROUTER_API_KEY || "",
+        headers: {},
+      };
+    case "ollama":
+      return {
+        baseURL: "https://ollama.com/v1",
+        apiKey: process.env.OLLAMA_API_KEY || "",
         headers: {},
       };
     default:

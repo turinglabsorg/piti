@@ -80,6 +80,7 @@ export const agentEnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   KIMI_API_KEY: z.string().optional(),
   OPENROUTER_API_KEY: z.string().optional(),
+  OLLAMA_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   MCP_BRIDGE_URL: z.string().optional(),
   AGENT_SECRET: z.string().optional(),
