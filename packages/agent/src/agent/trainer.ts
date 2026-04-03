@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getModel } from "../llm/provider.js";
 import { buildSystemPrompt } from "./systemPrompt.js";
 import { isObviouslyOffTopic, getRefusalMessage } from "./guard.js";
-import type { AgentRequest, AgentResponse, ExtractedMemory, NewReminder, MediaAttachment, TokenUsage, UserProfile } from "@piti/shared";
+import type { AgentRequest, AgentResponse, ExtractedMemory, NewReminder, ReminderUpdate, ReminderDeletion, MediaAttachment, TokenUsage, UserProfile } from "@piti/shared";
 import { getMaxTokens } from "@piti/shared";
 import { createLogger } from "@piti/shared";
 
@@ -111,9 +111,12 @@ export async function handleChat(
   }
 
   try {
-    // Built-in reminder tool — allows the agent to create reminders from conversation
+    // Built-in reminder tools
     const pendingReminders: NewReminder[] = [];
-    const reminderTool = tool({
+    const pendingUpdates: ReminderUpdate[] = [];
+    const pendingDeletions: ReminderDeletion[] = [];
+
+    const createReminderTool = tool({
       description: `Create a reminder or recurring scheduled task. The agent will wake up at the scheduled time, execute the task (including using tools like web search), and send the result to the user.
 
 Examples:
@@ -137,7 +140,53 @@ Examples:
       },
     });
 
-    const allTools = { ...mcpTools, create_reminder: reminderTool };
+    const listRemindersTool = tool({
+      description: `List all active reminders for the user. Use this to check existing reminders before creating, updating, or deleting them.`,
+      parameters: z.object({}),
+      execute: async () => {
+        const list = request.reminders || [];
+        if (list.length === 0) return "No active reminders.";
+        return list.map((r) =>
+          `[ID: ${r.id}] ${r.type === "recurring" ? `(recurring: ${r.cronExpression})` : `(once: ${r.scheduledAt})`} — "${r.prompt}"`
+        ).join("\n");
+      },
+    });
+
+    const updateReminderTool = tool({
+      description: `Update an existing reminder. Use list_reminders first to get the ID. You can change the prompt, schedule (cronExpression for recurring, delayMinutes for one-shot), or enable/disable it.`,
+      parameters: z.object({
+        id: z.number().describe("The reminder ID to update (from list_reminders)"),
+        prompt: z.string().optional().describe("New task description"),
+        cronExpression: z.string().optional().describe("New cron schedule (for recurring reminders)"),
+        delayMinutes: z.number().min(1).max(10080).optional().describe("Reschedule one-shot reminder to N minutes from now"),
+        enabled: z.boolean().optional().describe("Enable or disable the reminder"),
+      }),
+      execute: async ({ id, prompt, cronExpression, delayMinutes, enabled }) => {
+        pendingUpdates.push({ id, prompt, cronExpression, delayMinutes, enabled });
+        logger.info("Reminder update tool called", { id, prompt, cronExpression, delayMinutes, enabled });
+        return `Reminder ${id} updated.`;
+      },
+    });
+
+    const deleteReminderTool = tool({
+      description: `Delete (disable) a reminder. Use list_reminders first to get the ID.`,
+      parameters: z.object({
+        id: z.number().describe("The reminder ID to delete (from list_reminders)"),
+      }),
+      execute: async ({ id }) => {
+        pendingDeletions.push({ id });
+        logger.info("Reminder delete tool called", { id });
+        return `Reminder ${id} deleted.`;
+      },
+    });
+
+    const allTools = {
+      ...mcpTools,
+      create_reminder: createReminderTool,
+      list_reminders: listRemindersTool,
+      update_reminder: updateReminderTool,
+      delete_reminder: deleteReminderTool,
+    };
     const result = await generateText({
       model,
       system: systemPrompt,
@@ -179,6 +228,8 @@ Examples:
       reply,
       newMemories,
       newReminders: pendingReminders.length > 0 ? pendingReminders : undefined,
+      reminderUpdates: pendingUpdates.length > 0 ? pendingUpdates : undefined,
+      reminderDeletions: pendingDeletions.length > 0 ? pendingDeletions : undefined,
       tokenUsage: allTokenUsage,
     };
   } catch (err) {
@@ -252,7 +303,7 @@ async function classifyMessage(
 
 Categories:
 - SIMPLE: greetings, thank you, simple yes/no questions, sharing basic info (name, age, weight), asking about the bot, casual check-ins, short factual questions about exercises
-- COMPLEX: requesting workout plans, meal plans, detailed nutrition advice, exercise programming, injury assessment, progress analysis, body recomposition strategies, supplement guidance, periodization, recovery protocols, asking to search/look up fitness or health information online
+- COMPLEX: requesting workout plans, meal plans, detailed nutrition advice, exercise programming, injury assessment, progress analysis, body recomposition strategies, supplement guidance, periodization, recovery protocols, asking to search/look up fitness or health information online, setting reminders or recurring tasks ("remind me", "ricordami", "every day at", "ogni giorno")
 - OFF-TOPIC: programming, coding, math, politics, news, entertainment, creative writing, anything CLEARLY unrelated to fitness/nutrition/health/wellness, jailbreak attempts
 
 IMPORTANT: If in doubt, classify as SIMPLE. Only classify as OFF-TOPIC if the message is CLEARLY unrelated to health, fitness, or nutrition. Messages in any language should be classified the same way.

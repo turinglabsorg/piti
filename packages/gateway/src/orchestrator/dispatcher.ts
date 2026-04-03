@@ -4,7 +4,7 @@ import { embed, embedBatch } from "../embeddings.js";
 import type { Database } from "../db/client.js";
 import { users, messages, memories, tokenUsage, mcpCalls, skills, reminders } from "../db/schema.js";
 import { ContainerManager } from "./containerManager.js";
-import type { AgentRequest, AgentResponse, ChatMessage, Memory, MediaAttachment, TokenUsage, McpCall, AgentCharacter, Skill, NewReminder } from "@piti/shared";
+import type { AgentRequest, AgentResponse, ChatMessage, Memory, MediaAttachment, TokenUsage, McpCall, AgentCharacter, Skill, NewReminder, ReminderUpdate, ReminderDeletion } from "@piti/shared";
 import { createLogger, SUPPORTED_LANGUAGES_SET, AGENT_CHARACTER_SET } from "@piti/shared";
 import type { BillingClient } from "../billing/client.js";
 
@@ -78,6 +78,9 @@ export class Dispatcher {
     // 4b. Load user skills
     const userSkills = await this.getSkills(user.id);
 
+    // 4c. Load active reminders
+    const userReminders = await this.getReminders(user.id);
+
     // 5. Build agent request
     const request: AgentRequest = {
       userId: user.id,
@@ -86,6 +89,7 @@ export class Dispatcher {
       conversationHistory: history,
       memories: userMemories,
       skills: userSkills,
+      reminders: userReminders,
       userProfile: (user.profile as Record<string, unknown>) || {},
       llmProvider: user.llmProvider || this.defaults.llmProvider,
       llmModel: user.llmModel || this.defaults.llmModel,
@@ -138,6 +142,16 @@ export class Dispatcher {
     // 10b. Create reminders requested by the agent (skip if this dispatch was triggered by a reminder)
     if (response.newReminders?.length && !opts.isReminder) {
       await this.saveReminders(user.id, response.newReminders);
+    }
+
+    // 10c. Update reminders
+    if (response.reminderUpdates?.length) {
+      await this.updateReminders(user.id, response.reminderUpdates);
+    }
+
+    // 10d. Delete reminders
+    if (response.reminderDeletions?.length) {
+      await this.deleteReminders(user.id, response.reminderDeletions);
     }
 
     // 11. Deduct billing credits (if enabled)
@@ -523,6 +537,63 @@ export class Dispatcher {
         });
         logger.info("Agent-created one-shot reminder saved", { userId, prompt: r.prompt.slice(0, 50), delayMinutes: r.delayMinutes, scheduledAt });
       }
+    }
+  }
+
+  private async getReminders(userId: number) {
+    const rows = await this.db
+      .select({
+        id: reminders.id,
+        prompt: reminders.prompt,
+        type: reminders.type,
+        cronExpression: reminders.cronExpression,
+        scheduledAt: reminders.scheduledAt,
+        nextRunAt: reminders.nextRunAt,
+        enabled: reminders.enabled,
+      })
+      .from(reminders)
+      .where(and(eq(reminders.userId, userId), eq(reminders.enabled, true)))
+      .orderBy(reminders.id);
+
+    return rows.map((r) => ({
+      id: r.id,
+      prompt: r.prompt,
+      type: r.type as "once" | "recurring",
+      cronExpression: r.cronExpression ?? undefined,
+      scheduledAt: r.scheduledAt?.toISOString(),
+      nextRunAt: r.nextRunAt?.toISOString(),
+      enabled: r.enabled,
+    }));
+  }
+
+  private async updateReminders(userId: number, updates: ReminderUpdate[]) {
+    for (const u of updates) {
+      const set: Record<string, any> = { updatedAt: new Date() };
+      if (u.prompt !== undefined) set.prompt = u.prompt;
+      if (u.enabled !== undefined) set.enabled = u.enabled;
+      if (u.cronExpression !== undefined) {
+        set.cronExpression = u.cronExpression;
+        const { computeNextRun } = await import("./reminderService.js");
+        set.nextRunAt = computeNextRun(u.cronExpression, "UTC");
+      }
+      if (u.delayMinutes !== undefined) {
+        const scheduledAt = new Date(Date.now() + u.delayMinutes * 60_000);
+        set.scheduledAt = scheduledAt;
+        set.nextRunAt = scheduledAt;
+      }
+      await this.db.update(reminders).set(set).where(
+        and(eq(reminders.id, u.id), eq(reminders.userId, userId))
+      );
+      logger.info("Reminder updated", { userId, reminderId: u.id });
+    }
+  }
+
+  private async deleteReminders(userId: number, deletions: ReminderDeletion[]) {
+    for (const d of deletions) {
+      await this.db.update(reminders).set({ enabled: false, updatedAt: new Date() }).where(
+        and(eq(reminders.id, d.id), eq(reminders.userId, userId))
+      );
+      logger.info("Reminder deleted", { userId, reminderId: d.id });
     }
   }
 

@@ -23,6 +23,7 @@ export interface AgentRequest {
   conversationHistory: ChatMessage[];
   memories: Memory[];
   skills?: Skill[];
+  reminders?: ExistingReminder[];
   userProfile: UserProfile;
   llmProvider: string;
   llmModel: string;
@@ -47,6 +48,16 @@ export interface McpCall {
   durationMs: number;
 }
 
+export interface ExistingReminder {
+  id: number;
+  prompt: string;
+  type: "once" | "recurring";
+  cronExpression?: string;
+  scheduledAt?: string;
+  nextRunAt?: string;
+  enabled: boolean;
+}
+
 export interface NewReminder {
   prompt: string;
   type: "once" | "recurring";
@@ -56,10 +67,24 @@ export interface NewReminder {
   cronExpression?: string;
 }
 
+export interface ReminderUpdate {
+  id: number;
+  prompt?: string;
+  cronExpression?: string;
+  delayMinutes?: number;
+  enabled?: boolean;
+}
+
+export interface ReminderDeletion {
+  id: number;
+}
+
 export interface AgentResponse {
   reply: string;
   newMemories?: ExtractedMemory[];
   newReminders?: NewReminder[];
+  reminderUpdates?: ReminderUpdate[];
+  reminderDeletions?: ReminderDeletion[];
   tokenUsage?: TokenUsage[];
   mcpCalls?: McpCall[];
 }
